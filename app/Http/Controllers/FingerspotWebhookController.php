@@ -351,7 +351,7 @@ class FingerspotWebhookController extends Controller
     }
 
     /**
-     * Check real connection to Fingerspot.io API
+     * Check real connection to Fingerspot.io API and device status
      */
     public function checkConnection()
     {
@@ -368,21 +368,15 @@ class FingerspotWebhookController extends Controller
                 ]);
             }
 
-            // Test dengan API get_attlog untuk memastikan koneksi ke mesin real
-            $url = "https://developer.fingerspot.io/api/get_attlog";
+            // Use get_device_data API to check actual device connection status
+            $url = "https://developer.fingerspot.io/api/get_device_data";
             
             // Generate unique trans_id
             $transId = 'check_' . time();
             
-            // Get data dari 2 hari terakhir (maksimal range yang diperbolehkan)
-            $endDate = now();
-            $startDate = now()->subDays(1);
-            
             $postData = [
                 'trans_id' => $transId,
                 'cloud_id' => $cloudId,
-                'start_date' => $startDate->format('Y-m-d'),
-                'end_date' => $endDate->format('Y-m-d'),
             ];
             
             $ch = curl_init($url);
@@ -394,7 +388,7 @@ class FingerspotWebhookController extends Controller
                 'Authorization: Bearer ' . $apiToken,
             ]);
             curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-            curl_setopt($ch, CURLOPT_TIMEOUT, 10);
+            curl_setopt($ch, CURLOPT_TIMEOUT, 15);
             
             $response = curl_exec($ch);
             $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
@@ -411,22 +405,70 @@ class FingerspotWebhookController extends Controller
             
             $responseData = json_decode($response, true);
             
-            // Check if response is successful
-            if ($httpCode === 200) {
+            // Log the response for debugging
+            \Log::info('Fingerspot API Response', [
+                'http_code' => $httpCode,
+                'response' => $responseData
+            ]);
+            
+            // Check if API token is invalid
+            if ($httpCode === 401) {
                 return response()->json([
-                    'success' => true,
-                    'message' => 'Koneksi ke mesin berhasil! Mesin Revo W-230N terhubung ke cloud Fingerspot.io',
-                    'connected' => true,
-                    'cloud_id' => $cloudId,
-                    'server' => 'FDEVICE.COM:9003',
-                    'device' => 'Revo W-230N',
-                    'data_count' => isset($responseData['data']) ? count($responseData['data']) : 0,
-                    'message_detail' => isset($responseData['message']) ? $responseData['message'] : 'API responded successfully',
+                    'success' => false,
+                    'message' => 'API Token tidak valid atau expired. Silakan generate token baru dari developer.fingerspot.io',
+                    'connected' => false,
+                    'http_code' => $httpCode,
                 ]);
+            }
+            
+            // Check if cloud_id not found
+            if ($httpCode === 404) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Cloud ID tidak ditemukan. Pastikan mesin sudah terdaftar di Fingerspot.io dengan Cloud ID: ' . $cloudId,
+                    'connected' => false,
+                    'http_code' => $httpCode,
+                ]);
+            }
+            
+            // Check if response is successful and device is actually connected
+            if ($httpCode === 200 && isset($responseData['data'])) {
+                $deviceData = $responseData['data'];
+                
+                // Check device connection status
+                // Device is considered connected if it has recent activity or online status
+                $isConnected = isset($deviceData['status']) && 
+                              strtolower($deviceData['status']) === 'connected';
+                
+                if ($isConnected) {
+                    return response()->json([
+                        'success' => true,
+                        'message' => 'Mesin Revo W-230N terhubung ke cloud Fingerspot.io',
+                        'connected' => true,
+                        'cloud_id' => $cloudId,
+                        'device_info' => $deviceData,
+                        'last_activity' => $deviceData['last_activity'] ?? 'N/A',
+                    ]);
+                } else {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Mesin TIDAK TERHUBUNG. Pastikan mesin menyala dan terhubung ke internet.',
+                        'connected' => false,
+                        'cloud_id' => $cloudId,
+                        'device_status' => $deviceData['status'] ?? 'offline',
+                        'device_info' => $deviceData,
+                        'troubleshooting' => [
+                            '1. Pastikan mesin fingerspot dalam keadaan menyala',
+                            '2. Pastikan mesin terhubung ke jaringan internet',
+                            '3. Cek apakah Cloud ID benar: ' . $cloudId,
+                            '4. Cek di developer.fingerspot.io apakah mesin terdeteksi online',
+                        ]
+                    ]);
+                }
             } else {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Gagal terhubung ke API Fingerspot.io (HTTP ' . $httpCode . '). Cek API Token Anda.',
+                    'message' => 'Gagal mengecek status mesin (HTTP ' . $httpCode . ')',
                     'connected' => false,
                     'http_code' => $httpCode,
                     'response' => $responseData,

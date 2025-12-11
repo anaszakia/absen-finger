@@ -43,14 +43,37 @@ php artisan serve
 ### 1. Check Connection
 - **URL:** http://192.168.0.118:8000/api/fingerspot/check-connection
 - **Method:** GET
-- **Fungsi:** Mengecek apakah web bisa terhubung ke Fingerspot.io API
-- **Response:**
+- **Fungsi:** Mengecek apakah mesin fingerspot BENAR-BENAR terhubung ke cloud Fingerspot.io
+- **API yang digunakan:** `get_device_data` (bukan `get_attlog`)
+- **Response (Mesin Online):**
   ```json
   {
     "success": true,
-    "message": "Koneksi ke Fingerspot.io API berhasil!",
+    "message": "Mesin Revo W-230N terhubung ke cloud Fingerspot.io",
     "connected": true,
-    "cloud_id": "C263045107E1C26"
+    "cloud_id": "C263045107E1C26",
+    "device_info": {
+      "status": "connected",
+      "model": "Revo W-230N",
+      "serial": "...",
+      "last_activity": "2025-12-11 10:30:00"
+    }
+  }
+  ```
+- **Response (Mesin Offline):**
+  ```json
+  {
+    "success": false,
+    "message": "Mesin TIDAK TERHUBUNG. Pastikan mesin menyala dan terhubung ke internet.",
+    "connected": false,
+    "cloud_id": "C263045107E1C26",
+    "device_status": "offline",
+    "troubleshooting": [
+      "1. Pastikan mesin fingerspot dalam keadaan menyala",
+      "2. Pastikan mesin terhubung ke jaringan internet",
+      "3. Cek apakah Cloud ID benar: C263045107E1C26",
+      "4. Cek di developer.fingerspot.io apakah mesin terdeteksi online"
+    ]
   }
   ```
 
@@ -78,6 +101,20 @@ php artisan serve
 ---
 
 ## 🔧 Troubleshooting
+
+### ⚠️ PENTING: Perbedaan API Endpoint
+
+**SEBELUMNYA (SALAH):**
+- Menggunakan endpoint: `get_attlog`
+- Hanya mengecek apakah API merespons HTTP 200
+- **TIDAK mengecek status mesin yang sebenarnya**
+- Mesin mati tetap menampilkan "Terhubung" ❌
+
+**SEKARANG (BENAR):**
+- Menggunakan endpoint: `get_device_data`  
+- Mengecek status koneksi mesin yang sebenarnya
+- Jika mesin mati, akan menampilkan "TIDAK TERHUBUNG" ✅
+- Menampilkan informasi device: status, model, last activity
 
 ### Error: "API Token belum dikonfigurasi"
 **Solusi:**
