@@ -114,9 +114,9 @@ function syncEmployeesFromMachines() {
     const button = event.target.closest('button');
     const originalText = button.innerHTML;
     button.disabled = true;
-    button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Checking...';
+    button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Syncing...';
 
-    fetch('{{ route("employees.sync-from-machines") }}', {
+    fetch('{{ route("fingerspot.sync-employee-names") }}', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
@@ -129,25 +129,46 @@ function syncEmployeesFromMachines() {
         button.innerHTML = originalText;
 
         if (data.success) {
-            let message = `Sistem siap menerima data dari ${data.machines_count} mesin:\n\n`;
+            let message = data.message + '\n\n';
+            message += `📊 Total PIN di mesin: ${data.total_pins}\n`;
+            message += `✅ Karyawan baru dibuat: ${data.created}\n`;
+            message += `🔄 Karyawan diupdate: ${data.updated}\n`;
+            message += `❌ Gagal: ${data.failed}\n\n`;
             
-            data.machines.forEach(machine => {
-                message += `• ${machine.name} (${machine.ip})\n`;
-            });
-            
-            message += '\n📋 INSTRUKSI:\n';
-            data.instructions.forEach(instruction => {
-                message += instruction + '\n';
-            });
-            
-            message += '\n💡 ' + data.note;
+            if (data.details && data.details.length > 0) {
+                message += '📝 Detail:\n';
+                data.details.slice(0, 5).forEach(detail => {
+                    if (detail.status === 'created') {
+                        message += `  • PIN ${detail.pin}: ${detail.name} (Baru)\n`;
+                    } else if (detail.status === 'updated') {
+                        message += `  • PIN ${detail.pin}: ${detail.old_name} → ${detail.new_name}\n`;
+                    }
+                });
+                
+                if (data.details.length > 5) {
+                    message += `  ... dan ${data.details.length - 5} lainnya\n`;
+                }
+            }
             
             alert(message);
             
-            // Auto refresh setelah 5 detik
-            setTimeout(() => {
-                if (confirm('Refresh halaman untuk melihat data terbaru?')) {
+            // Auto refresh halaman
+            if (data.created > 0 || data.updated > 0) {
+                setTimeout(() => {
                     location.reload();
+                }, 1000);
+            }
+        } else {
+            alert('❌ Error: ' + data.message);
+        }
+    })
+    .catch(error => {
+        button.disabled = false;
+        button.innerHTML = originalText;
+        alert('❌ Terjadi kesalahan: ' + error.message + '\n\nPastikan:\n1. API Token sudah diisi di .env\n2. Cloud ID sudah benar\n3. Koneksi internet aktif');
+        console.error('Error:', error);
+    });
+}
                 }
             }, 5000);
         } else {

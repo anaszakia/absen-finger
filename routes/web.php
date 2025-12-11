@@ -7,13 +7,11 @@ use App\Http\Controllers\AuditLogController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\EmployeeController;
-use App\Http\Controllers\AttendanceMachineController;
 use App\Http\Controllers\AttendanceController;
-use App\Http\Controllers\AttendancePushController;
 use App\Http\Controllers\FingerspotWebhookController;
 
 
-// Public routes for fingerprint machine push (no authentication required)
+// Public routes for Fingerspot.io webhook (no authentication required)
 Route::prefix('api')->group(function () {
     // Fingerspot.io webhook endpoint
     Route::any('/fingerspot/webhook', [FingerspotWebhookController::class, 'receive'])
@@ -32,12 +30,6 @@ Route::prefix('api')->group(function () {
         ->name('fingerspot.get-user-info');
     Route::post('/fingerspot/sync-employee-names', [FingerspotWebhookController::class, 'syncEmployeeNames'])
         ->name('fingerspot.sync-employee-names');
-    
-    // Legacy attendance push (untuk backward compatibility)
-    Route::any('/attendance-push/receive', [AttendancePushController::class, 'receive'])
-        ->name('attendance.push.receive');
-    Route::get('/attendance-push/test', [AttendancePushController::class, 'test'])
-        ->name('attendance.push.test');
 });
 
 
@@ -183,27 +175,10 @@ Route::middleware(['auth', 'log.sensitive'])->group(function () {
     Route::resource('employees', EmployeeController::class)
         ->middleware('permission:view employees');
     
-    // Sync employees from machines
-    Route::post('/employees/sync-from-machines', [EmployeeController::class, 'syncFromMachines'])
-        ->middleware('permission:create employees')
-        ->name('employees.sync-from-machines');
-    
-    // Attendance Machine management routes
-    Route::resource('machines', AttendanceMachineController::class)
-        ->middleware('permission:view machines');
-    Route::get('/machines/{machine}/test-connection', [AttendanceMachineController::class, 'testConnection'])
-        ->middleware('permission:view machines')
-        ->name('machines.test-connection');
-    Route::get('/machines/{machine}/device-info', [AttendanceMachineController::class, 'getDeviceInfo'])
-        ->middleware('permission:view machines')
-        ->name('machines.device-info');
-    Route::get('/machines/push/setup', function() {
-        return view('machines.push-setup');
-    })->middleware('permission:view machines')->name('machines.push-setup');
-    
-    Route::get('/machines/fingerspot/setup', function() {
+    // Fingerspot Setup Page
+    Route::get('/fingerspot/setup', function() {
         return view('machines.fingerspot-setup');
-    })->middleware('permission:view machines')->name('machines.fingerspot-setup');
+    })->middleware('permission:view employees')->name('fingerspot.setup');
     
     // Attendance routes
     Route::get('/attendances', [AttendanceController::class, 'index'])
@@ -215,12 +190,6 @@ Route::middleware(['auth', 'log.sensitive'])->group(function () {
     Route::post('/attendances/import', [AttendanceController::class, 'processImport'])
         ->middleware('permission:create attendances')
         ->name('attendances.import.process');
-    Route::post('/attendances/sync/{machine}', [AttendanceController::class, 'syncFromMachine'])
-        ->middleware('permission:sync attendances')
-        ->name('attendances.sync');
-    Route::post('/attendances/sync-all', [AttendanceController::class, 'syncFromAllMachines'])
-        ->middleware('permission:sync attendances')
-        ->name('attendances.sync-all');
     Route::post('/attendances/export', [AttendanceController::class, 'export'])
         ->middleware('permission:export attendances')
         ->name('attendances.export');

@@ -1,44 +1,51 @@
-# Setup Fingerspot.io untuk Revo W-230N
+# Setup Fingerspot.io untuk Sistem Penggajian
 
 ## 📋 Overview
 
-Sistem ini sudah terintegrasi dengan **Fingerspot.io** untuk menerima data absensi secara real-time dari mesin Revo W-230N Anda.
-
-### Informasi Mesin Anda:
-- **Model:** Revo W-230N  
-- **Cloud ID:** C263045107E1C26
-- **Server:** FDEVICE.COM
-- **Port:** 9003
-- **Status:** ✅ Terkoneksi ke Fingerspot.io
+Sistem ini terintegrasi dengan **Fingerspot.io** untuk menerima data absensi secara real-time dari mesin fingerspot Anda.
 
 ---
 
 ## 🚀 Quick Start
 
-### 1. Setup Webhook di Fingerspot.io
+### 1. Dapatkan API Token
 
-1. **Login ke Developer Portal**
-   - Buka: https://developer.fingerspot.io
-   - Login dengan akun Anda
+1. Login ke: https://developer.fingerspot.io
+2. Menu **Settings** → **API Token**
+3. Klik **Generate Token** atau **Create New Token**
+4. Copy API Token yang ditampilkan
+5. **Penting:** Simpan token ini, tidak akan ditampilkan lagi
 
-2. **Konfigurasi Webhook**
-   - Menu: **Webhook** (sidebar kiri)
-   - Klik **Tambah Webhook** atau **Edit**
-   
-3. **Masukkan URL Webhook**
+### 2. Dapatkan Cloud ID
+
+1. Di dashboard fingerspot.io, lihat informasi mesin Anda
+2. Copy **Cloud ID** mesin (contoh: `C263045107E1C26`)
+
+### 3. Konfigurasi di Laravel
+
+Edit file `.env`:
+```env
+FINGERSPOT_API_TOKEN=your_api_token_here
+FINGERSPOT_CLOUD_ID=your_cloud_id_here
+```
+
+### 4. Setup Webhook di Fingerspot.io
+
+1. Login ke: https://developer.fingerspot.io
+2. Menu **Webhook** di sidebar
+3. Klik **Tambah Webhook**
+4. Masukkan URL webhook Anda:
    ```
-   http://192.168.0.118:8000/api/fingerspot/webhook
+   https://yourdomain.com/api/fingerspot/webhook
    ```
    
-   > ⚠️ **Penting:** URL harus dapat diakses dari internet. Jika menggunakan localhost, gunakan ngrok.
+   > ⚠️ Untuk localhost, gunakan ngrok atau tunneling service
 
-4. **Pilih Events**
-   - ✅ Attendance / Scanlog (untuk data absensi)
-   - ✅ User / Person (untuk data karyawan)
+5. Pilih Events:
+   - ✅ **Attendance / Scanlog** (data absensi)
+   - ✅ **User / Person** (data karyawan)
 
-5. **Save & Test**
-   - Klik **Save**
-   - Test dengan klik tombol **Test Webhook**
+6. **Save & Test**
 
 ---
 
@@ -46,58 +53,84 @@ Sistem ini sudah terintegrasi dengan **Fingerspot.io** untuk menerima data absen
 
 ```
 ┌─────────────────┐         ┌──────────────────┐         ┌──────────────────┐
-│  Mesin W-230N   │────────>│  Fingerspot.io   │────────>│  Web Penggajian  │
-│  (Scan Finger)  │         │  (Cloud Server)  │         │  (Your Server)   │
+│  Mesin Fingerspot │───────>│  Fingerspot.io   │───────>│  Laravel App     │
+│  (Scan Finger)  │         │  (Cloud)         │         │  (Your Server)   │
 └─────────────────┘         └──────────────────┘         └──────────────────┘
-      Realtime                   Webhook Push              Auto Process
+      Realtime                   Webhook Push              Auto Save
 ```
 
-### Flow:
-1. **Karyawan scan finger** di mesin Revo W-230N
-2. **Mesin kirim data** ke Fingerspot.io cloud (melalui internet)
-3. **Fingerspot.io kirim webhook** ke server web Anda
-4. **Web otomatis simpan** ke database
-5. **Data langsung muncul** di halaman Rekap Absensi
+1. Karyawan scan finger di mesin
+2. Mesin kirim data ke Fingerspot.io cloud
+3. Fingerspot.io kirim webhook ke Laravel
+4. Laravel auto-save ke database
+5. Data langsung muncul di sistem
 
 ---
 
-## 🔧 Konfigurasi
+## 🔌 API Endpoints
 
-### Webhook Endpoint
+### 1. Sync Employee Names
+**URL:** `POST /api/fingerspot/sync-employee-names`  
+**Fungsi:** Ambil semua karyawan dari mesin dan sync nama
 
-#### URL Production:
-```
-https://yourdomain.com/api/fingerspot/webhook
-```
-
-#### URL Development (localhost):
-```
-http://192.168.0.118:8000/api/fingerspot/webhook
-```
-
-### Test Endpoint:
-```
-http://192.168.0.118:8000/api/fingerspot/test
-```
-
-Buka di browser untuk cek apakah endpoint aktif.
-
----
-
-## 📥 Format Data yang Diterima
-
-### 1. Attendance Data (Scanlog)
-
+**Response:**
 ```json
 {
-  "type": "attendance",
-  "cloud_id": "C263045107E1C26",
-  "data": {
-    "pin": "001",
-    "personname": "Budi Santoso",
-    "scan_date": "2025-12-11 08:00:00",
-    "verify_mode": "FP"
-  }
+  "success": true,
+  "message": "Berhasil sync karyawan dari mesin: 2 dibuat, 3 diupdate",
+  "total_pins": 5,
+  "created": 2,
+  "updated": 3
+}
+```
+
+### 2. Check Connection
+**URL:** `GET /api/fingerspot/check-connection`  
+**Fungsi:** Test koneksi ke Fingerspot.io API
+
+### 3. Get All PINs
+**URL:** `GET /api/fingerspot/all-pins`  
+**Fungsi:** Lihat daftar PIN yang terdaftar di mesin
+
+---
+
+## 🔧 Troubleshooting
+
+### Nama Karyawan Masih "Employee 1, Employee 2"
+
+**Solusi:**
+```
+POST /api/fingerspot/sync-employee-names
+```
+
+Atau klik tombol **"Sync dari Mesin"** di halaman Data Karyawan.
+
+### Error: "Cloud ID tidak ditemukan"
+
+**Penyebab:** Cloud ID salah atau tidak ada karyawan di mesin
+
+**Solusi:**
+1. Cek Cloud ID di dashboard fingerspot.io
+2. Pastikan ada karyawan yang terdaftar di mesin
+3. Update `FINGERSPOT_CLOUD_ID` di `.env`
+
+### Error: "API Token tidak valid"
+
+**Solusi:**
+1. Generate token baru dari developer.fingerspot.io
+2. Update `FINGERSPOT_API_TOKEN` di `.env`
+3. Restart server Laravel
+
+---
+
+## 📚 Dokumentasi Lengkap
+
+Lihat [FINGERSPOT_API_SETUP.md](FINGERSPOT_API_SETUP.md) untuk dokumentasi API lengkap.
+
+---
+
+**Dibuat:** Desember 2025  
+**Versi:** 2.0 (Fingerspot.io Cloud-Based)
 }
 ```
 
