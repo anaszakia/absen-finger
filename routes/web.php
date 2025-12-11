@@ -26,6 +26,8 @@ Route::prefix('api')->group(function () {
         ->name('fingerspot.sync-users');
     Route::get('/fingerspot/employees', [FingerspotWebhookController::class, 'getEmployeesFromWebhook'])
         ->name('fingerspot.get-employees');
+    Route::get('/fingerspot/all-pins', [FingerspotWebhookController::class, 'getAllPins'])
+        ->name('fingerspot.get-all-pins');
     Route::get('/fingerspot/user-info/{pin}', [FingerspotWebhookController::class, 'getUserInfo'])
         ->name('fingerspot.get-user-info');
     Route::post('/fingerspot/sync-employee-names', [FingerspotWebhookController::class, 'syncEmployeeNames'])

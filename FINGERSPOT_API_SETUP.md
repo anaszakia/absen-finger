@@ -85,31 +85,60 @@ php artisan serve
   }
   ```
 
-### 3. Sync Employee Names (Update Nama Karyawan)
-- **URL:** http://192.168.0.118:8000/api/fingerspot/sync-employee-names
-- **Method:** POST
-- **Fungsi:** Mengambil nama lengkap karyawan dari API `get_userinfo` untuk karyawan yang namanya masih default
-- **Kapan digunakan:** Jika nama karyawan masih "Employee 1", "Employee 2", dst
+### 3. Get All PINs (Daftar PIN di Mesin)
+- **URL:** http://192.168.0.118:8000/api/fingerspot/all-pins
+- **Method:** GET
+- **Fungsi:** Mengambil daftar semua PIN yang terdaftar di mesin fingerspot
 - **Response:**
   ```json
   {
     "success": true,
-    "message": "Berhasil update 5 nama karyawan dari Fingerspot.io",
-    "updated": 5,
+    "data": {
+      "success": true,
+      "trans_id": "1",
+      "data": ["1", "2", "3", "10", "15"]
+    },
+    "pins": ["1", "2", "3", "10", "15"]
+  }
+  ```
+
+### 4. Sync Employee Names (Update Nama Karyawan)
+- **URL:** http://192.168.0.118:8000/api/fingerspot/sync-employee-names
+- **Method:** POST
+- **Fungsi:** 
+  1. Ambil semua PIN dari mesin dengan `get_all_pin`
+  2. Untuk setiap PIN, ambil detail dengan `get_userinfo`
+  3. Create/update employee dengan nama asli
+- **Kapan digunakan:** 
+  - Saat pertama kali setup
+  - Jika ada karyawan baru di mesin
+  - Jika nama karyawan masih "Employee 1", "Employee 2", dst
+- **Response:**
+  ```json
+  {
+    "success": true,
+    "message": "Berhasil sync karyawan dari mesin: 2 dibuat, 3 diupdate",
+    "total_pins": 5,
+    "created": 2,
+    "updated": 3,
     "failed": 0,
-    "total_checked": 5,
     "details": [
       {
         "pin": "1",
-        "old_name": "Employee 1",
-        "new_name": "Budi Santoso",
+        "name": "Budi Santoso",
+        "status": "created"
+      },
+      {
+        "pin": "2",
+        "old_name": "Employee 2",
+        "new_name": "Ahmad Rizki",
         "status": "updated"
       }
     ]
   }
   ```
 
-### 4. Get User Info (Per Karyawan)
+### 5. Get User Info (Per Karyawan)
 - **URL:** http://192.168.0.118:8000/api/fingerspot/user-info/{pin}
 - **Method:** GET
 - **Fungsi:** Mengambil informasi lengkap satu karyawan berdasarkan PIN
@@ -130,7 +159,7 @@ php artisan serve
   }
   ```
 
-### 5. Webhook Receiver
+### 6. Webhook Receiver
 - **URL:** http://192.168.0.118:8000/api/fingerspot/webhook
 - **Method:** ANY (GET/POST)
 - **Fungsi:** Menerima data real-time dari Fingerspot.io cloud
@@ -168,26 +197,48 @@ php artisan serve
 - Hanya menyertakan `pin` (ID karyawan)
 - Laravel auto-create employee dengan nama default "Employee {PIN}"
 
-**Solusi:**
-1. **Sync Employee Names (Otomatis):**
-   ```
-   POST http://192.168.0.118:8000/api/fingerspot/sync-employee-names
-   ```
-   Fungsi ini akan:
-   - Mencari semua employee dengan nama "Employee X"
-   - Memanggil API `get_userinfo` untuk setiap employee
-   - Update nama dengan data asli dari mesin
+**Solusi - Sync Employee Names (RECOMMENDED):**
+```
+POST http://192.168.0.118:8000/api/fingerspot/sync-employee-names
+```
 
-2. **Get User Info (Manual per karyawan):**
-   ```
-   GET http://192.168.0.118:8000/api/fingerspot/user-info/{pin}
-   ```
-   Untuk mengecek informasi satu karyawan tertentu
+**Cara Kerja:**
+1. **Step 1:** Panggil API `get_all_pin` untuk ambil semua PIN di mesin
+   - Response: `["1", "2", "3", "10", "15"]`
+2. **Step 2:** Untuk setiap PIN, panggil API `get_userinfo`
+   - Request: `{"trans_id":"1", "cloud_id":"xxx", "pin":"1"}`
+   - Response: `{"success":true, "data":{"pin":"1", "name":"Budi Santoso"}}`
+3. **Step 3:** Create/update employee di database dengan nama asli
 
-**Cara Kerja API `get_userinfo`:**
-- Endpoint: `https://developer.fingerspot.io/api/get_userinfo`
-- Parameter: `trans_id`, `cloud_id`, `pin`
-- Response: Data lengkap karyawan termasuk nama
+**Response Sukses:**
+```json
+{
+  "success": true,
+  "message": "Berhasil sync karyawan dari mesin: 2 dibuat, 3 diupdate",
+  "total_pins": 5,
+  "created": 2,
+  "updated": 3,
+  "details": [
+    {"pin": "1", "name": "Budi Santoso", "status": "created"},
+    {"pin": "2", "old_name": "Employee 2", "new_name": "Ahmad Rizki", "status": "updated"}
+  ]
+}
+```
+
+**Alternatif - Get All PINs Dulu:**
+Jika ingin cek dulu PIN apa saja yang ada:
+```
+GET http://192.168.0.118:8000/api/fingerspot/all-pins
+```
+
+**Alternatif - Manual Per Karyawan:**
+```
+GET http://192.168.0.118:8000/api/fingerspot/user-info/{pin}
+```
+
+**API Fingerspot.io yang Digunakan:**
+- `get_all_pin`: Ambil daftar semua PIN
+- `get_userinfo`: Ambil detail per karyawan (nama, dll)
 
 ### Error: "Cloud ID tidak ditemukan"
 **Penyebab:** Cloud ID salah atau tidak terdaftar
