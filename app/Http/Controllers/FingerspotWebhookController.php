@@ -371,9 +371,18 @@ class FingerspotWebhookController extends Controller
             // Test dengan API get_attlog untuk memastikan koneksi ke mesin real
             $url = "https://developer.fingerspot.io/api/get_attlog";
             
+            // Generate unique trans_id
+            $transId = 'check_' . time();
+            
+            // Get data dari 2 hari terakhir (maksimal range yang diperbolehkan)
+            $endDate = now();
+            $startDate = now()->subDays(1);
+            
             $postData = [
-                'trans_id' => $cloudId,
+                'trans_id' => $transId,
                 'cloud_id' => $cloudId,
+                'start_date' => $startDate->format('Y-m-d'),
+                'end_date' => $endDate->format('Y-m-d'),
             ];
             
             $ch = curl_init($url);
