@@ -1,0 +1,84 @@
+name: Deploy to Production Server
+
+on:
+  push:
+    branches:
+      - main  # Ubah ke branch yang Anda gunakan (bisa juga 'master')
+
+jobs:
+  deploy:
+    name: Deploy Application
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy to Server via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USERNAME }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          port: ${{ secrets.SERVER_PORT }}
+          script: |
+            echo "🚀 Starting deployment..."
+            
+            # Masuk ke directory project
+            cd ${{ secrets.SERVER_PATH }}
+            
+            # Pull perubahan terbaru dari GitHub
+            echo "📥 Pulling latest changes..."
+            git pull origin main
+            
+            # Copy .env jika belum ada
+            if [ ! -f .env ]; then
+                echo "📝 Creating .env file..."
+                cp .env.example .env
+                php artisan key:generate
+            fi
+            
+            # Install/Update Composer dependencies
+            echo "📦 Installing Composer dependencies..."
+            composer install --no-interaction --prefer-dist --optimize-autoloader --no-dev
+            
+            # Set permissions untuk storage dan cache
+            echo "🔐 Setting permissions..."
+            chmod -R 775 storage bootstrap/cache
+            chown -R www-data:www-data storage bootstrap/cache
+            
+            # Create storage link jika belum ada
+            echo "🔗 Creating storage link..."
+            php artisan storage:link
+            
+            # Clear all cache
+            echo "🧹 Clearing cache..."
+            php artisan cache:clear
+            php artisan config:clear
+            php artisan route:clear
+            php artisan view:clear
+            
+            # Run database migrations
+            echo "🗄️ Running migrations..."
+            php artisan migrate --force
+            
+            # Optimize application
+            echo "⚡ Optimizing application..."
+            php artisan config:cache
+            php artisan route:cache
+            php artisan view:cache
+            php artisan optimize
+            
+            # Restart queue workers if exists
+            echo "🔄 Restarting queue workers..."
+            php artisan queue:restart || true
+            
+            echo "✅ Deployment completed successfully!"
+
+      - name: Deployment Success Notification
+        if: success()
+        run: echo "✅ Deployment berhasil!"
+
+      - name: Deployment Failed Notification
+        if: failure()
+        run: echo "❌ Deployment gagal! Cek logs untuk detail."
