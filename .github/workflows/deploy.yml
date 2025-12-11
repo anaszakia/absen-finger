@@ -54,8 +54,10 @@ jobs:
             # Create symbolic link dari public_html ke laravel/public
             echo "🔗 Creating public_html symlink..."
             cd /home/u364194548/domains/penggajian.anaszakiaardhan.my.id
-            rm -rf public_html
-            ln -s laravel/public public_html
+            if [ -e public_html ] && [ ! -L public_html ]; then
+                mv public_html public_html.backup
+            fi
+            ln -sfn laravel/public public_html
             cd ${{ secrets.SERVER_PATH }}
             
             # Clear all cache
@@ -81,11 +83,3 @@ jobs:
             php artisan queue:restart || true
             
             echo "✅ Deployment completed successfully!"
-
-      - name: Deployment Success Notification
-        if: success()
-        run: echo "✅ Deployment berhasil!"
-
-      - name: Deployment Failed Notification
-        if: failure()
-        run: echo "❌ Deployment gagal! Cek logs untuk detail."
