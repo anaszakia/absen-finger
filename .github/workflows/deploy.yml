@@ -51,6 +51,13 @@ jobs:
             echo "🔗 Creating storage link..."
             php artisan storage:link
             
+            # Create symbolic link dari public_html ke laravel/public
+            echo "🔗 Creating public_html symlink..."
+            cd /home/u364194548/domains/penggajian.anaszakiaardhan.my.id
+            rm -rf public_html
+            ln -s laravel/public public_html
+            cd ${{ secrets.SERVER_PATH }}
+            
             # Clear all cache
             echo "🧹 Clearing cache..."
             php artisan cache:clear
