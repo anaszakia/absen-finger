@@ -695,4 +695,209 @@ class FingerspotWebhookController extends Controller
             ]);
         }
     }
+
+    /**
+     * Get user info from Fingerspot.io for a specific employee
+     */
+    public function getUserInfo($pin)
+    {
+        try {
+            $cloudId = env('FINGERSPOT_CLOUD_ID');
+            $apiToken = env('FINGERSPOT_API_TOKEN');
+            
+            if (!$apiToken || !$cloudId) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'API Token atau Cloud ID belum dikonfigurasi',
+                ]);
+            }
+
+            $url = "https://developer.fingerspot.io/api/get_userinfo";
+            
+            $postData = [
+                'trans_id' => "1",
+                'cloud_id' => $cloudId,
+                'pin' => $pin,
+            ];
+            
+            $ch = curl_init($url);
+            curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 0);
+            curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, 0);
+            curl_setopt($ch, CURLOPT_POST, 1);
+            curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($postData));
+            curl_setopt($ch, CURLOPT_HTTPHEADER, [
+                'Content-Type: application/json',
+                'Authorization: Bearer ' . $apiToken
+            ]);
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
+            curl_setopt($ch, CURLOPT_FOLLOWLOCATION, 1);
+            curl_setopt($ch, CURLOPT_TIMEOUT, 15);
+            
+            $response = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $error = curl_error($ch);
+            curl_close($ch);
+            
+            if ($error) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'CURL Error: ' . $error,
+                ]);
+            }
+            
+            $responseData = json_decode($response, true);
+            
+            if ($httpCode === 200 && isset($responseData['success']) && $responseData['success'] === true) {
+                return response()->json([
+                    'success' => true,
+                    'data' => $responseData,
+                ]);
+            } else {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Gagal mengambil user info',
+                    'http_code' => $httpCode,
+                    'response' => $responseData,
+                ]);
+            }
+            
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Error: ' . $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * Sync all employee names from Fingerspot.io
+     * Fungsi ini akan mengambil nama lengkap karyawan dari API get_userinfo
+     */
+    public function syncEmployeeNames()
+    {
+        try {
+            $cloudId = env('FINGERSPOT_CLOUD_ID');
+            $apiToken = env('FINGERSPOT_API_TOKEN');
+            
+            if (!$apiToken || !$cloudId) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'API Token atau Cloud ID belum dikonfigurasi',
+                ]);
+            }
+
+            // Ambil semua employee yang namanya masih default (Employee 1, Employee 2, dst)
+            $employees = Employee::where('name', 'like', 'Employee %')
+                               ->orWhereNull('name')
+                               ->get();
+            
+            $updated = 0;
+            $failed = 0;
+            $details = [];
+
+            foreach ($employees as $employee) {
+                $pin = $employee->pin ?? $employee->employee_id;
+                
+                if (!$pin) {
+                    $failed++;
+                    continue;
+                }
+
+                // Get user info dari Fingerspot API
+                $url = "https://developer.fingerspot.io/api/get_userinfo";
+                
+                $postData = [
+                    'trans_id' => "1",
+                    'cloud_id' => $cloudId,
+                    'pin' => $pin,
+                ];
+                
+                $ch = curl_init($url);
+                curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 0);
+                curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, 0);
+                curl_setopt($ch, CURLOPT_POST, 1);
+                curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($postData));
+                curl_setopt($ch, CURLOPT_HTTPHEADER, [
+                    'Content-Type: application/json',
+                    'Authorization: Bearer ' . $apiToken
+                ]);
+                curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
+                curl_setopt($ch, CURLOPT_FOLLOWLOCATION, 1);
+                curl_setopt($ch, CURLOPT_TIMEOUT, 10);
+                
+                $response = curl_exec($ch);
+                $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+                curl_close($ch);
+                
+                if ($httpCode === 200) {
+                    $responseData = json_decode($response, true);
+                    
+                    if (isset($responseData['success']) && $responseData['success'] === true) {
+                        // Data user info biasanya ada di responseData['data']
+                        $userInfo = $responseData['data'] ?? $responseData;
+                        $name = $userInfo['name'] ?? $userInfo['personname'] ?? null;
+                        
+                        if ($name) {
+                            $employee->name = $name;
+                            $employee->save();
+                            $updated++;
+                            
+                            $details[] = [
+                                'pin' => $pin,
+                                'old_name' => 'Employee ' . $pin,
+                                'new_name' => $name,
+                                'status' => 'updated'
+                            ];
+                            
+                            Log::info('Updated employee name from Fingerspot', [
+                                'pin' => $pin,
+                                'name' => $name
+                            ]);
+                        } else {
+                            $failed++;
+                            $details[] = [
+                                'pin' => $pin,
+                                'status' => 'no_name_in_response'
+                            ];
+                        }
+                    } else {
+                        $failed++;
+                        $details[] = [
+                            'pin' => $pin,
+                            'status' => 'api_error'
+                        ];
+                    }
+                } else {
+                    $failed++;
+                    $details[] = [
+                        'pin' => $pin,
+                        'status' => 'http_error_' . $httpCode
+                    ];
+                }
+                
+                // Sleep sebentar agar tidak spam API
+                usleep(500000); // 0.5 detik
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => "Berhasil update {$updated} nama karyawan dari Fingerspot.io",
+                'updated' => $updated,
+                'failed' => $failed,
+                'total_checked' => $employees->count(),
+                'details' => $details,
+            ]);
+            
+        } catch (\Exception $e) {
+            Log::error('Sync employee names error', [
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            
+            return response()->json([
+                'success' => false,
+                'message' => 'Error: ' . $e->getMessage(),
+            ]);
+        }
+    }
 }

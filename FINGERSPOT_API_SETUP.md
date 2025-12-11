@@ -78,12 +78,59 @@ php artisan serve
   ```json
   {
     "success": true,
-    "message": "Berhasil sinkronisasi 15 user dari mesin Fingerspot",
-    "synced": 15
+    "message": "Berhasil sync 5 user dan 15 data absensi dari mesin",
+    "synced": 5,
+    "users": 5,
+    "attendances": 15
   }
   ```
 
-### 3. Webhook Receiver
+### 3. Sync Employee Names (Update Nama Karyawan)
+- **URL:** http://192.168.0.118:8000/api/fingerspot/sync-employee-names
+- **Method:** POST
+- **Fungsi:** Mengambil nama lengkap karyawan dari API `get_userinfo` untuk karyawan yang namanya masih default
+- **Kapan digunakan:** Jika nama karyawan masih "Employee 1", "Employee 2", dst
+- **Response:**
+  ```json
+  {
+    "success": true,
+    "message": "Berhasil update 5 nama karyawan dari Fingerspot.io",
+    "updated": 5,
+    "failed": 0,
+    "total_checked": 5,
+    "details": [
+      {
+        "pin": "1",
+        "old_name": "Employee 1",
+        "new_name": "Budi Santoso",
+        "status": "updated"
+      }
+    ]
+  }
+  ```
+
+### 4. Get User Info (Per Karyawan)
+- **URL:** http://192.168.0.118:8000/api/fingerspot/user-info/{pin}
+- **Method:** GET
+- **Fungsi:** Mengambil informasi lengkap satu karyawan berdasarkan PIN
+- **Contoh:** http://192.168.0.118:8000/api/fingerspot/user-info/1
+- **Response:**
+  ```json
+  {
+    "success": true,
+    "data": {
+      "trans_id": "1",
+      "success": true,
+      "data": {
+        "pin": "1",
+        "name": "Budi Santoso",
+        "personname": "Budi Santoso"
+      }
+    }
+  }
+  ```
+
+### 5. Webhook Receiver
 - **URL:** http://192.168.0.118:8000/api/fingerspot/webhook
 - **Method:** ANY (GET/POST)
 - **Fungsi:** Menerima data real-time dari Fingerspot.io cloud
@@ -113,6 +160,34 @@ php artisan serve
 - Tidak mengecek apakah mesin fisik sedang online/offline
 - Hanya mengecek apakah API Fingerspot.io bisa diakses
 - Data sudah tersimpan di cloud Fingerspot.io
+
+### ⚠️ Masalah Nama Karyawan "Employee 1, Employee 2, dst"
+
+**Penyebab:**
+- Webhook attendance dari Fingerspot.io **tidak menyertakan nama karyawan**
+- Hanya menyertakan `pin` (ID karyawan)
+- Laravel auto-create employee dengan nama default "Employee {PIN}"
+
+**Solusi:**
+1. **Sync Employee Names (Otomatis):**
+   ```
+   POST http://192.168.0.118:8000/api/fingerspot/sync-employee-names
+   ```
+   Fungsi ini akan:
+   - Mencari semua employee dengan nama "Employee X"
+   - Memanggil API `get_userinfo` untuk setiap employee
+   - Update nama dengan data asli dari mesin
+
+2. **Get User Info (Manual per karyawan):**
+   ```
+   GET http://192.168.0.118:8000/api/fingerspot/user-info/{pin}
+   ```
+   Untuk mengecek informasi satu karyawan tertentu
+
+**Cara Kerja API `get_userinfo`:**
+- Endpoint: `https://developer.fingerspot.io/api/get_userinfo`
+- Parameter: `trans_id`, `cloud_id`, `pin`
+- Response: Data lengkap karyawan termasuk nama
 
 ### Error: "Cloud ID tidak ditemukan"
 **Penyebab:** Cloud ID salah atau tidak terdaftar

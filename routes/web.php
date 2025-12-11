@@ -26,6 +26,10 @@ Route::prefix('api')->group(function () {
         ->name('fingerspot.sync-users');
     Route::get('/fingerspot/employees', [FingerspotWebhookController::class, 'getEmployeesFromWebhook'])
         ->name('fingerspot.get-employees');
+    Route::get('/fingerspot/user-info/{pin}', [FingerspotWebhookController::class, 'getUserInfo'])
+        ->name('fingerspot.get-user-info');
+    Route::post('/fingerspot/sync-employee-names', [FingerspotWebhookController::class, 'syncEmployeeNames'])
+        ->name('fingerspot.sync-employee-names');
     
     // Legacy attendance push (untuk backward compatibility)
     Route::any('/attendance-push/receive', [AttendancePushController::class, 'receive'])
