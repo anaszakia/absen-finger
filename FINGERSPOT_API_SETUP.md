@@ -15,12 +15,14 @@
 
 ### 3. Konfigurasi di Laravel
 1. Buka file `.env` di root project
-2. Cari baris `FINGERSPOT_API_TOKEN=`
-3. Paste token yang sudah dicopy:
+2. Tambahkan konfigurasi berikut:
    ```
-   FINGERSPOT_API_TOKEN=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+   FINGERSPOT_API_TOKEN=2VBG6F40KLHJUHSH
+   FINGERSPOT_CLOUD_ID=xxxx
    ```
-4. Save file `.env`
+   - `FINGERSPOT_API_TOKEN`: Token yang sudah di-copy dari developer portal
+   - `FINGERSPOT_CLOUD_ID`: Cloud ID mesin fingerspot Anda (cek di dashboard fingerspot.io)
+3. Save file `.env`
 
 ### 4. Restart Laravel Server
 ```bash
@@ -43,37 +45,28 @@ php artisan serve
 ### 1. Check Connection
 - **URL:** http://192.168.0.118:8000/api/fingerspot/check-connection
 - **Method:** GET
-- **Fungsi:** Mengecek apakah mesin fingerspot BENAR-BENAR terhubung ke cloud Fingerspot.io
-- **API yang digunakan:** `get_device_data` (bukan `get_attlog`)
-- **Response (Mesin Online):**
+- **Fungsi:** Mengecek apakah web bisa mengakses data absensi dari Fingerspot.io API
+- **API yang digunakan:** `get_attlog` dengan parameter `cloud_id`
+- **Response (Berhasil):**
   ```json
   {
     "success": true,
-    "message": "Mesin Revo W-230N terhubung ke cloud Fingerspot.io",
+    "message": "Koneksi ke Fingerspot.io API berhasil! Mesin terhubung ke webhook.",
     "connected": true,
-    "cloud_id": "C263045107E1C26",
-    "device_info": {
-      "status": "connected",
-      "model": "Revo W-230N",
-      "serial": "...",
-      "last_activity": "2025-12-11 10:30:00"
-    }
+    "cloud_id": "xxxx",
+    "trans_id": "1",
+    "data_count": 5,
+    "date_range": "2025-12-10 s/d 2025-12-11",
+    "info": "Data absensi akan otomatis dikirim via webhook ke aplikasi ini"
   }
   ```
-- **Response (Mesin Offline):**
+- **Response (Gagal):**
   ```json
   {
     "success": false,
-    "message": "Mesin TIDAK TERHUBUNG. Pastikan mesin menyala dan terhubung ke internet.",
+    "message": "Cloud ID tidak ditemukan. Pastikan Cloud ID benar: xxxx",
     "connected": false,
-    "cloud_id": "C263045107E1C26",
-    "device_status": "offline",
-    "troubleshooting": [
-      "1. Pastikan mesin fingerspot dalam keadaan menyala",
-      "2. Pastikan mesin terhubung ke jaringan internet",
-      "3. Cek apakah Cloud ID benar: C263045107E1C26",
-      "4. Cek di developer.fingerspot.io apakah mesin terdeteksi online"
-    ]
+    "http_code": 404
   }
   ```
 
@@ -102,19 +95,32 @@ php artisan serve
 
 ## 🔧 Troubleshooting
 
-### ⚠️ PENTING: Perbedaan API Endpoint
+### ⚠️ PENTING: Cara Kerja Fingerspot.io
 
-**SEBELUMNYA (SALAH):**
-- Menggunakan endpoint: `get_attlog`
-- Hanya mengecek apakah API merespons HTTP 200
-- **TIDAK mengecek status mesin yang sebenarnya**
-- Mesin mati tetap menampilkan "Terhubung" ❌
+**Konsep Webhook-Based System:**
+- Mesin fingerspot terhubung ke **Fingerspot.io Cloud** (bukan ke Laravel langsung)
+- Saat ada absensi, mesin kirim data ke **Fingerspot.io Cloud**
+- Cloud Fingerspot.io kemudian **push data via webhook** ke Laravel Anda
+- Laravel hanya perlu **menerima webhook** dan menyimpan data
 
-**SEKARANG (BENAR):**
-- Menggunakan endpoint: `get_device_data`  
-- Mengecek status koneksi mesin yang sebenarnya
-- Jika mesin mati, akan menampilkan "TIDAK TERHUBUNG" ✅
-- Menampilkan informasi device: status, model, last activity
+**API `get_attlog`:**
+- Digunakan untuk **mengambil riwayat data** yang sudah ada di cloud
+- Parameter: `cloud_id`, `start_date`, `end_date`
+- Range maksimal: 2 hari per request
+- Berguna untuk **sinkronisasi data historis**
+
+**Bukan Real-time Device Connection:**
+- Tidak mengecek apakah mesin fisik sedang online/offline
+- Hanya mengecek apakah API Fingerspot.io bisa diakses
+- Data sudah tersimpan di cloud Fingerspot.io
+
+### Error: "Cloud ID tidak ditemukan"
+**Penyebab:** Cloud ID salah atau tidak terdaftar
+**Solusi:**
+1. Cek Cloud ID mesin Anda di dashboard fingerspot.io
+2. Pastikan Cloud ID di `.env` sama dengan di dashboard
+3. Update `FINGERSPOT_CLOUD_ID` di file `.env`
+4. Restart server
 
 ### Error: "API Token belum dikonfigurasi"
 **Solusi:**
@@ -129,11 +135,13 @@ php artisan serve
 2. Update token di file `.env`
 3. Restart server
 
-### Error: "Gagal terhubung ke Fingerspot.io API (HTTP 404)"
-**Penyebab:** Endpoint API salah atau Cloud ID tidak valid
+### Error: "Account ID tidak ditemukan"
+**Penyebab:** Account ID salah atau tidak terdaftar di akun API Token
 **Solusi:**
-1. Pastikan Cloud ID benar: `C263045107E1C26`
-2. Cek apakah mesin sudah terdaftar di developer.fingerspot.io
+1. Cek Account ID di developer.fingerspot.io → Profile
+2. Pastikan Account ID di `.env` sama dengan yang di profile
+3. Update `FINGERSPOT_ACCOUNT_ID` di file `.env`
+4. Restart server
 
 ### Sync Users: "Tidak ada user ditemukan di mesin"
 **Penyebab:** 
