@@ -309,6 +309,12 @@ class PayrollController extends Controller
             ->with('success', 'Penggajian berhasil dibayar');
     }
 
+    public function slip(Payroll $payroll)
+    {
+        $payroll->load(['employee', 'details']);
+        return view('payroll.payrolls.slip', compact('payroll'));
+    }
+
     private function calculatePayroll(Payroll $payroll)
     {
         // Hapus detail lama

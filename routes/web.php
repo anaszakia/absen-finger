@@ -221,6 +221,11 @@ Route::middleware(['auth', 'log.sensitive'])->group(function () {
         ->middleware('permission:view payroll')
         ->name('payrolls.history');
     
+    // Print slip gaji
+    Route::get('/payrolls/{payroll}/slip', [PayrollController::class, 'slip'])
+        ->middleware('permission:view payroll')
+        ->name('payrolls.slip');
+    
     // Generate payroll untuk periode tertentu
     Route::post('/payrolls/generate', [PayrollController::class, 'generate'])
         ->middleware('permission:create payroll')

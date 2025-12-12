@@ -18,15 +18,46 @@
                     </button>
                 </form>
             @endif
-            <button onclick="window.print()" class="inline-flex items-center bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg shadow-sm">
-                <i class="fas fa-print mr-2"></i>Cetak
+            <button onclick="printSlip()" class="inline-flex items-center bg-purple-500 hover:bg-purple-600 text-white px-4 py-2 rounded-lg shadow-sm">
+                <i class="fas fa-file-invoice mr-2"></i>Print Slip Gaji
             </button>
         </div>
     </div>
 
-    <!-- Employee Info -->
-    <div class="bg-white rounded-lg shadow-md p-6 mb-6">
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+    <script>
+    function printSlip() {
+        window.open('{{ route('payrolls.slip', $payroll) }}', '_blank');
+    }
+    </script>
+
+    <!-- Attendance Summary -->
+    <div class="bg-white rounded-lg shadow-md p-6 mb-6 print-section">
+        <h4 class="text-lg font-semibold mb-4 print-title">Ringkasan Kehadiran</h4>
+        
+        <!-- Print Version: Table -->
+        <div class="print-only" style="display: none;">
+            <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
+                <thead>
+                    <tr>
+                        <th style="border: 1px solid #000; padding: 8px; text-align: center; background: #f5f5f5;">Total Hari Kerja</th>
+                        <th style="border: 1px solid #000; padding: 8px; text-align: center; background: #f5f5f5;">Hadir</th>
+                        <th style="border: 1px solid #000; padding: 8px; text-align: center; background: #f5f5f5;">Terlambat</th>
+                        <th style="border: 1px solid #000; padding: 8px; text-align: center; background: #f5f5f5;">Tidak Hadir</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td style="border: 1px solid #000; padding: 8px; text-align: center; font-weight: bold;">{{ $payroll->total_days }}</td>
+                        <td style="border: 1px solid #000; padding: 8px; text-align: center; font-weight: bold;">{{ $payroll->present_days }}</td>
+                        <td style="border: 1px solid #000; padding: 8px; text-align: center; font-weight: bold;">{{ $payroll->late_days }}</td>
+                        <td style="border: 1px solid #000; padding: 8px; text-align: center; font-weight: bold;">{{ $payroll->absent_days }}</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        
+        <!-- Screen Version: Cards -->
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-center no-print">
             <div>
                 <table class="w-full text-sm">
                     <tr>
@@ -98,9 +129,17 @@
     </div>
 
     <!-- Salary Details -->
-    <div class="bg-white rounded-lg shadow-md p-6 mb-6">
-        <h4 class="text-lg font-semibold mb-4">Rincian Gaji</h4>
-        <table class="min-w-full text-sm mb-4">
+    <div class="bg-white rounded-lg shadow-md p-6 mb-6 print-section">
+        <h4 class="text-lg font-semibold mb-4 print-title">Rincian Gaji</h4>
+        
+        <table class="min-w-full text-sm mb-4 print-table" style="border-collapse: collapse;">
+            <thead class="print-only" style="display: none;">
+                <tr>
+                    <th style="border: 1px solid #000; padding: 8px; text-align: left; background: #f5f5f5; width: 50%;">KOMPONEN</th>
+                    <th style="border: 1px solid #000; padding: 8px; text-align: left; background: #f5f5f5; width: 25%;">KETERANGAN</th>
+                    <th style="border: 1px solid #000; padding: 8px; text-align: right; background: #f5f5f5; width: 25%;">JUMLAH (Rp)</th>
+                </tr>
+            </thead>
             <tbody>
                 <!-- Basic Salary -->
                 <tr>
