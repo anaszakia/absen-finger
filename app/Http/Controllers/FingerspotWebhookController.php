@@ -1067,9 +1067,14 @@ class FingerspotWebhookController extends Controller
             
             DB::commit();
             
+            // Simpan timestamp reset untuk filter data lama saat sync
+            $resetTime = now()->toDateTimeString();
+            cache()->put('fingerspot_last_reset_time', $resetTime, now()->addDays(7));
+            
             Log::info('Local data cleared successfully', [
                 'deleted_employees' => $deletedEmployees,
                 'deleted_attendances' => $deletedAttendances,
+                'reset_time' => $resetTime,
             ]);
             
             return response()->json([
@@ -1079,7 +1084,9 @@ class FingerspotWebhookController extends Controller
                     'employees' => $deletedEmployees,
                     'attendances' => $deletedAttendances,
                 ],
-                'next_step' => 'Silakan jalankan Sync Attendance untuk mengambil data baru dari mesin',
+                'reset_time' => $resetTime,
+                'next_step' => 'Silakan jalankan Sync Data Hari Ini untuk mengambil data baru dari mesin',
+                'important' => 'Sistem akan otomatis mengabaikan data lama sebelum ' . $resetTime,
             ]);
             
         } catch (\Exception $e) {
@@ -1121,6 +1128,9 @@ class FingerspotWebhookController extends Controller
             // Hanya ambil data HARI INI untuk menghindari cache lama
             $today = date('Y-m-d');
             
+            // Ambil waktu reset terakhir dari cache
+            $lastResetTime = cache()->get('fingerspot_last_reset_time');
+            
             $postData = [
                 'trans_id' => uniqid(), // Unique trans_id untuk menghindari cache
                 'cloud_id' => $cloudId,
@@ -1128,7 +1138,9 @@ class FingerspotWebhookController extends Controller
                 'end_date' => $today,
             ];
             
-            Log::info('Sync today only - Request', $postData);
+            Log::info('Sync today only - Request', array_merge($postData, [
+                'last_reset_time' => $lastResetTime,
+            ]));
             
             $ch = curl_init($url);
             curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 0);
@@ -1181,6 +1193,7 @@ class FingerspotWebhookController extends Controller
             // Process data
             $usersSynced = 0;
             $attendancesSynced = 0;
+            $skippedOldData = 0;
             $uniqueUsers = [];
             
             if (isset($responseData['data']) && is_array($responseData['data'])) {
@@ -1204,15 +1217,32 @@ class FingerspotWebhookController extends Controller
                     
                     if (!$pin || !$scanDate) continue;
                     
-                    // Validasi: hanya proses data hari ini
-                    $recordDate = Carbon::parse($scanDate)->format('Y-m-d');
+                    $scanDateTime = Carbon::parse($scanDate);
+                    
+                    // FILTER 1: Hanya data hari ini
+                    $recordDate = $scanDateTime->format('Y-m-d');
                     if ($recordDate !== $today) {
-                        Log::warning('Skipping old data', [
+                        Log::warning('Skipping - bukan hari ini', [
                             'pin' => $pin,
                             'date' => $recordDate,
                             'expected' => $today,
                         ]);
+                        $skippedOldData++;
                         continue;
+                    }
+                    
+                    // FILTER 2: Jika ada reset time, hanya ambil data SETELAH reset
+                    if ($lastResetTime) {
+                        $resetDateTime = Carbon::parse($lastResetTime);
+                        if ($scanDateTime->lessThanOrEqualTo($resetDateTime)) {
+                            Log::warning('Skipping - data lama sebelum reset', [
+                                'pin' => $pin,
+                                'scan_time' => $scanDateTime->toDateTimeString(),
+                                'reset_time' => $resetDateTime->toDateTimeString(),
+                            ]);
+                            $skippedOldData++;
+                            continue;
+                        }
                     }
                     
                     // Track unique users
@@ -1232,15 +1262,15 @@ class FingerspotWebhookController extends Controller
                         Log::info('New employee synced', [
                             'pin' => $pin,
                             'name' => $employee->name,
+                            'scan_time' => $scanDateTime->toDateTimeString(),
                         ]);
                     } else {
                         $employee = $uniqueUsers[$pin];
                     }
                     
                     // Save attendance
-                    $carbonTime = Carbon::parse($scanDate);
-                    $date = $carbonTime->format('Y-m-d');
-                    $time = $carbonTime->format('H:i:s');
+                    $date = $scanDateTime->format('Y-m-d');
+                    $time = $scanDateTime->format('H:i:s');
                     
                     $attendance = Attendance::where('employee_id', $employee->id)
                                           ->where('date', $date)
@@ -1252,16 +1282,29 @@ class FingerspotWebhookController extends Controller
                             'attendance_machine_id' => $machine->id,
                             'date' => $date,
                             'check_in' => $time,
-                            'status' => $carbonTime->format('H:i') > '08:00' ? 'late' : 'present',
+                            'status' => $scanDateTime->format('H:i') > '08:00' ? 'late' : 'present',
                         ]);
                         $attendancesSynced++;
+                        
+                        Log::info('New attendance created', [
+                            'employee' => $employee->name,
+                            'date' => $date,
+                            'time' => $time,
+                        ]);
                     } elseif (!$attendance->check_out && $time > $attendance->check_in) {
                         $attendance->check_out = $time;
                         $attendance->save();
                         $attendancesSynced++;
+                        
+                        Log::info('Attendance updated - check out', [
+                            'employee' => $employee->name,
+                            'check_out' => $time,
+                        ]);
                     }
                 }
             }
+            
+            $totalReceived = isset($responseData['data']) ? count($responseData['data']) : 0;
             
             return response()->json([
                 'success' => true,
@@ -1271,7 +1314,12 @@ class FingerspotWebhookController extends Controller
                     'users' => $usersSynced,
                     'attendances' => $attendancesSynced,
                 ],
-                'total_data_received' => isset($responseData['data']) ? count($responseData['data']) : 0,
+                'total_data_received' => $totalReceived,
+                'skipped_old_data' => $skippedOldData,
+                'last_reset_time' => $lastResetTime,
+                'info' => $lastResetTime 
+                    ? "Filter aktif: hanya data setelah " . Carbon::parse($lastResetTime)->format('d/m/Y H:i:s')
+                    : "Tidak ada filter waktu reset",
             ]);
             
         } catch (\Exception $e) {
