@@ -162,17 +162,27 @@ class FingerspotWebhookController extends Controller
         
         if (!$employee) {
             // Auto-create employee
+            // Cek berbagai kemungkinan field nama dari webhook fingerspot
+            $name = $data['personname'] 
+                 ?? $data['name'] 
+                 ?? $data['person_name']
+                 ?? $data['fullname']
+                 ?? $data['full_name']
+                 ?? $data['username']
+                 ?? "Employee {$employeeId}";
+            
             $employee = Employee::create([
                 'employee_id' => $employeeId,
                 'pin' => $employeeId,
-                'name' => $data['personname'] ?? $data['name'] ?? "Employee {$employeeId}",
+                'name' => $name,
                 'is_active' => true,
             ]);
             
-            Log::info('Auto-created employee from fingerspot', [
+            Log::info('Auto-created employee from fingerspot attendance', [
                 'employee_id' => $employeeId,
                 'pin' => $employeeId,
                 'name' => $employee->name,
+                'webhook_data' => $data,
             ]);
         }
 
@@ -258,6 +268,15 @@ class FingerspotWebhookController extends Controller
             return false;
         }
 
+        // Cek berbagai kemungkinan field nama dari webhook fingerspot
+        $name = $data['personname'] 
+             ?? $data['name'] 
+             ?? $data['person_name']
+             ?? $data['fullname']
+             ?? $data['full_name']
+             ?? $data['username']
+             ?? null;
+        
         $employee = Employee::where('employee_id', $employeeId)
                            ->orWhere('pin', $employeeId)
                            ->first();
@@ -266,9 +285,17 @@ class FingerspotWebhookController extends Controller
             // Update existing
             $updated = false;
             
-            if (isset($data['personname']) && $employee->name !== $data['personname']) {
-                $employee->name = $data['personname'];
+            // Update nama jika ada di webhook dan berbeda dari database
+            if ($name && $employee->name !== $name) {
+                $oldName = $employee->name;
+                $employee->name = $name;
                 $updated = true;
+                
+                Log::info('Updated employee name from fingerspot webhook', [
+                    'employee_id' => $employeeId,
+                    'old_name' => $oldName,
+                    'new_name' => $name,
+                ]);
             }
             
             if (empty($employee->pin) && !empty($employeeId)) {
@@ -278,24 +305,25 @@ class FingerspotWebhookController extends Controller
             
             if ($updated) {
                 $employee->save();
-                Log::info('Updated employee from fingerspot', [
-                    'employee_id' => $employeeId,
-                ]);
             }
             
             return $updated;
         } else {
             // Create new
+            $finalName = $name ?? "Employee {$employeeId}";
+            
             Employee::create([
                 'employee_id' => $employeeId,
                 'pin' => $employeeId,
-                'name' => $data['personname'] ?? $data['name'] ?? "Employee {$employeeId}",
+                'name' => $finalName,
                 'is_active' => true,
             ]);
             
-            Log::info('Created employee from fingerspot', [
+            Log::info('Created employee from fingerspot webhook', [
                 'employee_id' => $employeeId,
                 'pin' => $employeeId,
+                'name' => $finalName,
+                'webhook_data' => $data,
             ]);
             
             return true;
@@ -866,7 +894,28 @@ class FingerspotWebhookController extends Controller
                 ]);
             }
 
-            // Step 1: Get all PINs from machine
+            // PENTING: Fingerspot.io API get_all_pin tidak mengembalikan data PIN
+            // Hanya mengembalikan {"success":true,"trans_id":"1"}
+            // Solusi: Gunakan data yang sudah masuk via webhook
+            
+            // Cek apakah ada data karyawan dan absensi yang sudah masuk via webhook
+            $totalEmployees = Employee::count();
+            $recentAttendances = Attendance::whereDate('date', today())->count();
+            
+            if ($totalEmployees > 0) {
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Data sudah tersedia dari webhook',
+                    'existing_data' => [
+                        'total_employees' => $totalEmployees,
+                        'recent_attendances' => $recentAttendances,
+                    ],
+                    'info' => 'Fingerspot.io menggunakan sistem PUSH (webhook). Data karyawan otomatis masuk saat ada aktivitas absensi di mesin.',
+                ]);
+            }
+            
+            // Jika belum ada data, coba panggil API get_all_pin 
+            // untuk trigger mesin (meski tidak mengembalikan data)
             $url = "https://developer.fingerspot.io/api/get_all_pin";
             
             $postData = [
@@ -891,153 +940,31 @@ class FingerspotWebhookController extends Controller
             $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
             curl_close($ch);
             
-            if ($httpCode !== 200) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Gagal mengambil daftar PIN dari mesin (HTTP ' . $httpCode . ')',
-                    'http_code' => $httpCode,
-                ]);
-            }
-            
             $responseData = json_decode($response, true);
             
-            if (!isset($responseData['success']) || $responseData['success'] !== true) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'API get_all_pin gagal: ' . ($responseData['message'] ?? 'Unknown error'),
-                    'response' => $responseData,
-                ]);
-            }
+            Log::info('Get All PINs API Response', [
+                'http_code' => $httpCode,
+                'raw_response' => $response,
+                'parsed_response' => $responseData,
+            ]);
             
-            // Get array of PINs
-            $pins = $responseData['data'] ?? [];
+            // Fingerspot API get_all_pin hanya return {"success":true,"trans_id":"1"}
+            // Tidak ada data PIN yang dikembalikan
             
-            if (empty($pins)) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Tidak ada PIN yang terdaftar di mesin',
-                ]);
-            }
-            
-            Log::info('Found PINs from machine', ['pins' => $pins, 'total' => count($pins)]);
-            
-            $created = 0;
-            $updated = 0;
-            $failed = 0;
-            $details = [];
-
-            // Step 2: For each PIN, get user info and create/update employee
-            foreach ($pins as $pin) {
-                // Get user info dari Fingerspot API
-                $url = "https://developer.fingerspot.io/api/get_userinfo";
-                
-                $postData = [
-                    'trans_id' => "1",
-                    'cloud_id' => $cloudId,
-                    'pin' => $pin,
-                ];
-                
-                $ch = curl_init($url);
-                curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 0);
-                curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, 0);
-                curl_setopt($ch, CURLOPT_POST, 1);
-                curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($postData));
-                curl_setopt($ch, CURLOPT_HTTPHEADER, [
-                    'Content-Type: application/json',
-                    'Authorization: Bearer ' . $apiToken
-                ]);
-                curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
-                curl_setopt($ch, CURLOPT_FOLLOWLOCATION, 1);
-                curl_setopt($ch, CURLOPT_TIMEOUT, 10);
-                
-                $response = curl_exec($ch);
-                $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-                curl_close($ch);
-                
-                if ($httpCode === 200) {
-                    $responseData = json_decode($response, true);
-                    
-                    if (isset($responseData['success']) && $responseData['success'] === true) {
-                        // Data user info biasanya ada di responseData['data']
-                        $userInfo = $responseData['data'] ?? $responseData;
-                        $name = $userInfo['name'] ?? $userInfo['personname'] ?? null;
-                        
-                        if ($name) {
-                            // Find or create employee
-                            $employee = Employee::where('pin', $pin)
-                                              ->orWhere('employee_id', $pin)
-                                              ->first();
-                            
-                            if ($employee) {
-                                // Update existing employee
-                                $oldName = $employee->name;
-                                $employee->name = $name;
-                                $employee->pin = $pin;
-                                $employee->save();
-                                $updated++;
-                                
-                                $details[] = [
-                                    'pin' => $pin,
-                                    'old_name' => $oldName,
-                                    'new_name' => $name,
-                                    'status' => 'updated'
-                                ];
-                            } else {
-                                // Create new employee
-                                $employee = Employee::create([
-                                    'employee_id' => $pin,
-                                    'pin' => $pin,
-                                    'name' => $name,
-                                    'is_active' => true,
-                                ]);
-                                $created++;
-                                
-                                $details[] = [
-                                    'pin' => $pin,
-                                    'name' => $name,
-                                    'status' => 'created'
-                                ];
-                            }
-                            
-                            Log::info('Synced employee from Fingerspot', [
-                                'pin' => $pin,
-                                'name' => $name,
-                                'action' => $employee->wasRecentlyCreated ? 'created' : 'updated'
-                            ]);
-                        } else {
-                            $failed++;
-                            $details[] = [
-                                'pin' => $pin,
-                                'status' => 'no_name_in_response'
-                            ];
-                        }
-                    } else {
-                        $failed++;
-                        $details[] = [
-                            'pin' => $pin,
-                            'status' => 'api_error'
-                        ];
-                    }
-                } else {
-                    $failed++;
-                    $details[] = [
-                        'pin' => $pin,
-                        'status' => 'http_error_' . $httpCode
-                    ];
-                }
-                
-                // Sleep sebentar agar tidak spam API
-                usleep(300000); // 0.3 detik
-            }
-
             return response()->json([
-                'success' => true,
-                'message' => "Berhasil sync karyawan dari mesin: {$created} dibuat, {$updated} diupdate",
-                'total_pins' => count($pins),
-                'created' => $created,
-                'updated' => $updated,
-                'failed' => $failed,
-                'details' => $details,
+                'success' => false,
+                'message' => 'API get_all_pin tidak mengembalikan data PIN',
+                'api_response' => $responseData,
+                'info' => 'Fingerspot.io menggunakan sistem PUSH berbasis webhook. API get_all_pin hanya mengembalikan konfirmasi, bukan data.',
+                'solution' => [
+                    'method_1' => 'Minta karyawan scan jari di mesin → Data otomatis masuk via webhook',
+                    'method_2' => 'Pastikan webhook sudah aktif di developer.fingerspot.io → Webhook',
+                    'method_3' => 'Atau tambah karyawan manual di menu Data Karyawan',
+                ],
+                'existing_data' => [
+                    'total_employees' => $totalEmployees,
+                    'recent_attendances' => $recentAttendances,
+                ]
             ]);
             
         } catch (\Exception $e) {

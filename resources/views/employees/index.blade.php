@@ -114,7 +114,7 @@ function syncEmployeesFromMachines() {
     const button = event.target.closest('button');
     const originalText = button.innerHTML;
     button.disabled = true;
-    button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Syncing...';
+    button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Checking...';
 
     fetch('{{ route("fingerspot.sync-employee-names") }}', {
         method: 'POST',
@@ -128,44 +128,57 @@ function syncEmployeesFromMachines() {
         button.disabled = false;
         button.innerHTML = originalText;
 
-        if (data.success) {
-            let message = data.message + '\n\n';
-            message += `📊 Total PIN di mesin: ${data.total_pins}\n`;
-            message += `✅ Karyawan baru dibuat: ${data.created}\n`;
-            message += `🔄 Karyawan diupdate: ${data.updated}\n`;
-            message += `❌ Gagal: ${data.failed}\n\n`;
+        if (data.existing_data) {
+            const emp = data.existing_data.total_employees;
+            const att = data.existing_data.recent_attendances;
             
-            if (data.details && data.details.length > 0) {
-                message += '📝 Detail:\n';
-                data.details.slice(0, 5).forEach(detail => {
-                    if (detail.status === 'created') {
-                        message += `  • PIN ${detail.pin}: ${detail.name} (Baru)\n`;
-                    } else if (detail.status === 'updated') {
-                        message += `  • PIN ${detail.pin}: ${detail.old_name} → ${detail.new_name}\n`;
-                    }
-                });
+            let message = '📊 Status Data Fingerspot\n\n';
+            message += `✅ Total Karyawan: ${emp}\n`;
+            message += `📅 Absensi Hari Ini: ${att}\n\n`;
+            
+            if (emp > 0) {
+                message += '💡 Data karyawan sudah tersedia!\n';
+                message += 'Klik OK untuk refresh halaman.';
                 
-                if (data.details.length > 5) {
-                    message += `  ... dan ${data.details.length - 5} lainnya\n`;
+                alert(message);
+                location.reload();
+            } else {
+                message += '⚠️ Belum ada data karyawan\n\n';
+                message += '📌 Cara Mendapatkan Data:\n';
+                message += '1. Minta karyawan scan jari di mesin\n';
+                message += '   → Data otomatis masuk via webhook\n\n';
+                message += '2. Pastikan webhook aktif di:\n';
+                message += '   developer.fingerspot.io → Webhook\n\n';
+                message += '3. Atau tambah manual di tombol\n';
+                message += '   "Tambah Karyawan" →\n\n';
+                message += '💡 Fingerspot.io = sistem PUSH otomatis,\n';
+                message += '   bukan sistem PULL manual';
+                
+                alert(message);
+            }
+        } else {
+            let message = '❌ ' + (data.message || 'Tidak dapat mengambil data') + '\n\n';
+            
+            if (data.info) {
+                message += 'ℹ️ Info:\n' + data.info + '\n\n';
+            }
+            
+            if (data.solution) {
+                message += '✅ Solusi:\n\n';
+                let i = 1;
+                for (let key in data.solution) {
+                    message += `${i}. ${data.solution[key]}\n`;
+                    i++;
                 }
             }
             
             alert(message);
-            
-            // Auto refresh halaman
-            if (data.created > 0 || data.updated > 0) {
-                setTimeout(() => {
-                    location.reload();
-                }, 1000);
-            }
-        } else {
-            alert('❌ Error: ' + data.message);
         }
     })
     .catch(error => {
         button.disabled = false;
         button.innerHTML = originalText;
-        alert('❌ Terjadi kesalahan: ' + error.message + '\n\nPastikan:\n1. API Token sudah diisi di .env\n2. Cloud ID sudah benar\n3. Koneksi internet aktif');
+        alert('❌ Error: ' + error.message + '\n\nPastikan:\n✓ API Token sudah diisi\n✓ Cloud ID sudah benar\n✓ Koneksi internet aktif');
         console.error('Error:', error);
     });
 }
