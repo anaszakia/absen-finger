@@ -8,14 +8,6 @@
         <div class="flex justify-between items-center mb-6">
             <h2 class="text-2xl font-bold text-gray-800">Data Karyawan</h2>
             <div class="flex gap-2">
-                <button onclick="syncEmployeesFromMachines()" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg flex items-center gap-2">
-                    <i class="fas fa-sync"></i>
-                    Sync dari Mesin
-                </button>
-                <a href="{{ route('employees.create') }}" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2">
-                    <i class="fas fa-plus"></i>
-                    Tambah Karyawan
-                </a>
             </div>
         </div>
 
@@ -109,78 +101,4 @@
     </div>
 </div>
 
-<script>
-function syncEmployeesFromMachines() {
-    const button = event.target.closest('button');
-    const originalText = button.innerHTML;
-    button.disabled = true;
-    button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Checking...';
-
-    fetch('{{ route("fingerspot.sync-employee-names") }}', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-CSRF-TOKEN': '{{ csrf_token() }}'
-        }
-    })
-    .then(response => response.json())
-    .then(data => {
-        button.disabled = false;
-        button.innerHTML = originalText;
-
-        if (data.existing_data) {
-            const emp = data.existing_data.total_employees;
-            const att = data.existing_data.recent_attendances;
-            
-            let message = '📊 Status Data Fingerspot\n\n';
-            message += `✅ Total Karyawan: ${emp}\n`;
-            message += `📅 Absensi Hari Ini: ${att}\n\n`;
-            
-            if (emp > 0) {
-                message += '💡 Data karyawan sudah tersedia!\n';
-                message += 'Klik OK untuk refresh halaman.';
-                
-                alert(message);
-                location.reload();
-            } else {
-                message += '⚠️ Belum ada data karyawan\n\n';
-                message += '📌 Cara Mendapatkan Data:\n';
-                message += '1. Minta karyawan scan jari di mesin\n';
-                message += '   → Data otomatis masuk via webhook\n\n';
-                message += '2. Pastikan webhook aktif di:\n';
-                message += '   developer.fingerspot.io → Webhook\n\n';
-                message += '3. Atau tambah manual di tombol\n';
-                message += '   "Tambah Karyawan" →\n\n';
-                message += '💡 Fingerspot.io = sistem PUSH otomatis,\n';
-                message += '   bukan sistem PULL manual';
-                
-                alert(message);
-            }
-        } else {
-            let message = '❌ ' + (data.message || 'Tidak dapat mengambil data') + '\n\n';
-            
-            if (data.info) {
-                message += 'ℹ️ Info:\n' + data.info + '\n\n';
-            }
-            
-            if (data.solution) {
-                message += '✅ Solusi:\n\n';
-                let i = 1;
-                for (let key in data.solution) {
-                    message += `${i}. ${data.solution[key]}\n`;
-                    i++;
-                }
-            }
-            
-            alert(message);
-        }
-    })
-    .catch(error => {
-        button.disabled = false;
-        button.innerHTML = originalText;
-        alert('❌ Error: ' + error.message + '\n\nPastikan:\n✓ API Token sudah diisi\n✓ Cloud ID sudah benar\n✓ Koneksi internet aktif');
-        console.error('Error:', error);
-    });
-}
-</script>
 @endsection

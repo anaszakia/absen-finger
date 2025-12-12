@@ -98,61 +98,23 @@
                             <a href="{{ route('employees.index') }}" class="flex items-center px-3 py-1.5 text-xs text-gray-600 rounded hover:bg-gray-100 transition-colors {{ request()->routeIs('employees.*') ? 'bg-gray-100 text-gray-900' : '' }}">
                                 <span class="sidebar-text">Karyawan</span>
                             </a>
-                        @endcan
-                        
-                        @can('view machines')
-                            <a href="{{ route('machines.fingerspot-setup') }}" class="flex items-center px-3 py-1.5 text-xs text-gray-600 rounded hover:bg-gray-100 transition-colors {{ request()->routeIs('machines.fingerspot-setup') ? 'bg-gray-100 text-gray-900' : '' }}">
-                                <i class="fas fa-fingerprint text-blue-600 mr-1"></i>
-                                <span class="sidebar-text">Setup Fingerspot</span>
-                            </a>
-                        @endcan
+                        @endcan                     
                         
                         @can('view attendances')
                             <a href="{{ route('attendances.index') }}" class="flex items-center px-3 py-1.5 text-xs text-gray-600 rounded hover:bg-gray-100 transition-colors {{ request()->routeIs('attendances.*') ? 'bg-gray-100 text-gray-900' : '' }}">
                                 <span class="sidebar-text">Rekap Absensi</span>
                             </a>
                         @endcan
+
+                         @can('view machines')
+                            <a href="{{ route('machines.fingerspot-setup') }}" class="flex items-center px-3 py-1.5 text-xs text-gray-600 rounded hover:bg-gray-100 transition-colors {{ request()->routeIs('machines.fingerspot-setup') ? 'bg-gray-100 text-gray-900' : '' }}">
+                                <i class="fas fa-fingerprint text-blue-600 mr-1"></i>
+                                <span class="sidebar-text">Push Data Dari Mesin</span>
+                            </a>
+                        @endcan
                     </div>
                 </li>
             @endif
-            
-            <!-- Reports -->
-            @hasrole('super_admin')
-                <li>
-                    <a href="#" class="flex items-center px-3 py-2 text-sm text-gray-700 rounded hover:bg-gray-100 transition-colors">
-                        <i class="fas fa-chart-line w-4 text-sm mr-3"></i>
-                        <span class="sidebar-text">Reports</span>
-                    </a>
-                </li>
-            @endhasrole
-            
-            <!-- Profile -->
-            @can('edit profile')
-                <li>
-                    <a href="{{ route('profile.edit') }}" class="flex items-center px-3 py-2 text-sm text-gray-700 rounded hover:bg-gray-100 transition-colors {{ request()->routeIs('profile.*') ? 'bg-gray-900 text-white hover:bg-gray-900' : '' }}">
-                        <i class="fas fa-user w-4 text-sm mr-3"></i>
-                        <span class="sidebar-text">Profile</span>
-                    </a>
-                </li>
-            @endcan
-            
-            <!-- Settings -->
-            @hasrole('super_admin')
-                <li>
-                    <a href="#" class="flex items-center px-3 py-2 text-sm text-gray-700 rounded hover:bg-gray-100 transition-colors">
-                        <i class="fas fa-cog w-4 text-sm mr-3"></i>
-                        <span class="sidebar-text">Settings</span>
-                    </a>
-                </li>
-            @endhasrole
-            
-            <!-- Help -->
-            <li>
-                <a href="{{ route('help.center') }}" class="flex items-center px-3 py-2 text-sm text-gray-700 rounded hover:bg-gray-100 transition-colors">
-                    <i class="fas fa-question-circle w-4 text-sm mr-3"></i>
-                    <span class="sidebar-text">Help</span>
-                </a>
-            </li>
         </ul>
     </nav>
     
