@@ -12,13 +12,10 @@
                     <i class="fas fa-file-upload"></i>
                     Import dari USB
                 </a>
-                <form action="{{ route('attendances.sync-all') }}" method="POST" class="inline">
-                    @csrf
-                    <button type="submit" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg flex items-center gap-2">
-                        <i class="fas fa-sync"></i>
-                        Sync Semua Mesin
-                    </button>
-                </form>
+                <a href="{{ route('machines.fingerspot-setup') }}" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg flex items-center gap-2">
+                    <i class="fas fa-cog"></i>
+                    Setup Fingerspot
+                </a>
             </div>
         </div>
 

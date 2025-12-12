@@ -176,9 +176,9 @@ Route::middleware(['auth', 'log.sensitive'])->group(function () {
         ->middleware('permission:view employees');
     
     // Fingerspot Setup Page
-    Route::get('/fingerspot/setup', function() {
+    Route::get('/machines/fingerspot/setup', function() {
         return view('machines.fingerspot-setup');
-    })->middleware('permission:view employees')->name('fingerspot.setup');
+    })->middleware('permission:view machines')->name('machines.fingerspot-setup');
     
     // Attendance routes
     Route::get('/attendances', [AttendanceController::class, 'index'])

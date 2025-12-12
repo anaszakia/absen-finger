@@ -101,9 +101,6 @@
                         @endcan
                         
                         @can('view machines')
-                            <a href="{{ route('machines.index') }}" class="flex items-center px-3 py-1.5 text-xs text-gray-600 rounded hover:bg-gray-100 transition-colors {{ request()->routeIs('machines.index') ? 'bg-gray-100 text-gray-900' : '' }}">
-                                <span class="sidebar-text">Mesin Absensi</span>
-                            </a>
                             <a href="{{ route('machines.fingerspot-setup') }}" class="flex items-center px-3 py-1.5 text-xs text-gray-600 rounded hover:bg-gray-100 transition-colors {{ request()->routeIs('machines.fingerspot-setup') ? 'bg-gray-100 text-gray-900' : '' }}">
                                 <i class="fas fa-fingerprint text-blue-600 mr-1"></i>
                                 <span class="sidebar-text">Setup Fingerspot</span>

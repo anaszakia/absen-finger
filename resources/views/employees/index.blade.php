@@ -8,10 +8,10 @@
         <div class="flex justify-between items-center mb-6">
             <h2 class="text-2xl font-bold text-gray-800">Data Karyawan</h2>
             <div class="flex gap-2">
-                <button onclick="syncEmployeesFromMachines()" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg flex items-center gap-2">
-                    <i class="fas fa-sync"></i>
-                    Sync dari Mesin
-                </button>
+                <a href="{{ route('machines.fingerspot-setup') }}" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg flex items-center gap-2">
+                    <i class="fas fa-cog"></i>
+                    Setup Fingerspot
+                </a>
                 <a href="{{ route('employees.create') }}" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2">
                     <i class="fas fa-plus"></i>
                     Tambah Karyawan
