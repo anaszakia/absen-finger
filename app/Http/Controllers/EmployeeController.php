@@ -41,9 +41,12 @@ class EmployeeController extends Controller
             'department' => 'nullable|string|max:255',
             'join_date' => 'nullable|date',
             'basic_salary' => 'nullable|numeric|min:0',
-            'is_active' => 'boolean',
+            'is_active' => 'nullable|boolean',
             'photo' => 'nullable|image|mimes:jpeg,png,jpg|max:2048',
         ]);
+
+        // Handle checkbox is_active (default to true if not set)
+        $validated['is_active'] = $request->has('is_active') ? 1 : 0;
 
         // Handle photo upload
         if ($request->hasFile('photo')) {
@@ -91,9 +94,12 @@ class EmployeeController extends Controller
             'department' => 'nullable|string|max:255',
             'join_date' => 'nullable|date',
             'basic_salary' => 'nullable|numeric|min:0',
-            'is_active' => 'boolean',
+            'is_active' => 'nullable|boolean',
             'photo' => 'nullable|image|mimes:jpeg,png,jpg|max:2048',
         ]);
+
+        // Handle checkbox is_active (default to false if not set)
+        $validated['is_active'] = $request->has('is_active') ? 1 : 0;
 
         // Handle photo upload
         if ($request->hasFile('photo')) {

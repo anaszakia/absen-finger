@@ -63,6 +63,14 @@ class RolePermissionSeeder extends Seeder
             'view attendances',
             'sync attendances',
             'export attendances',
+            // Payroll Management
+            'view payroll',
+            'create payroll',
+            'edit payroll',
+            'delete payroll',
+            'approve payroll',
+            'pay payroll',
+            'generate payroll',
         ];
 
         foreach ($permissions as $permission) {

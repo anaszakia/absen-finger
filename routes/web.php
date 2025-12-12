@@ -9,6 +9,10 @@ use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\EmployeeController;
 use App\Http\Controllers\AttendanceController;
 use App\Http\Controllers\FingerspotWebhookController;
+use App\Http\Controllers\SalaryComponentController;
+use App\Http\Controllers\DeductionController;
+use App\Http\Controllers\AllowanceController;
+use App\Http\Controllers\PayrollController;
 
 
 // Public routes for Fingerspot.io webhook (no authentication required)
@@ -193,6 +197,38 @@ Route::middleware(['auth', 'log.sensitive'])->group(function () {
     Route::post('/attendances/export', [AttendanceController::class, 'export'])
         ->middleware('permission:export attendances')
         ->name('attendances.export');
+    
+    // Payroll Management Routes
+    // Master Data - Komponen Gaji
+    Route::resource('salary-components', SalaryComponentController::class)
+        ->middleware('permission:view payroll');
+    
+    // Master Data - Potongan
+    Route::resource('deductions', DeductionController::class)
+        ->middleware('permission:view payroll');
+    
+    // Master Data - Tunjangan/Bonus
+    Route::resource('allowances', AllowanceController::class)
+        ->middleware('permission:view payroll');
+    
+    // Payroll/Penggajian
+    Route::resource('payrolls', PayrollController::class)
+        ->middleware('permission:view payroll');
+    
+    // Generate payroll untuk periode tertentu
+    Route::post('/payrolls/generate', [PayrollController::class, 'generate'])
+        ->middleware('permission:create payroll')
+        ->name('payrolls.generate');
+    
+    // Approve payroll
+    Route::post('/payrolls/{payroll}/approve', [PayrollController::class, 'approve'])
+        ->middleware('permission:approve payroll')
+        ->name('payrolls.approve');
+    
+    // Pay payroll (mark as paid)
+    Route::post('/payrolls/{payroll}/pay', [PayrollController::class, 'markAsPaid'])
+        ->middleware('permission:pay payroll')
+        ->name('payrolls.pay');
 });
 
 Route::redirect('/', '/login');

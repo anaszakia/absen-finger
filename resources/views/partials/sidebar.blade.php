@@ -115,6 +115,38 @@
                     </div>
                 </li>
             @endif
+            
+            <!-- Payroll Section -->
+            @can('view payroll')
+                <li>
+                    <button onclick="togglePayrollDropdown()" class="flex items-center justify-between w-full px-3 py-2 text-sm text-gray-700 rounded hover:bg-gray-100 transition-colors">
+                        <div class="flex items-center">
+                            <i class="fas fa-money-bill-wave w-4 text-sm mr-3"></i>
+                            <span class="sidebar-text">Penggajian</span>
+                        </div>
+                        <i class="fas fa-chevron-down text-xs transition-transform duration-200 sidebar-arrow" id="payroll-dropdown-arrow"></i>
+                    </button>
+                    
+                    <!-- Dropdown -->
+                    <div id="payroll-dropdown-content" class="hidden mt-1 ml-7 space-y-1">
+                        <a href="{{ route('payrolls.index') }}" class="flex items-center px-3 py-1.5 text-xs text-gray-600 rounded hover:bg-gray-100 transition-colors {{ request()->routeIs('payrolls.*') ? 'bg-gray-100 text-gray-900' : '' }}">
+                            <span class="sidebar-text">Daftar Penggajian</span>
+                        </a>
+                        
+                        <a href="{{ route('salary-components.index') }}" class="flex items-center px-3 py-1.5 text-xs text-gray-600 rounded hover:bg-gray-100 transition-colors {{ request()->routeIs('salary-components.*') ? 'bg-gray-100 text-gray-900' : '' }}">
+                            <span class="sidebar-text">Komponen Gaji</span>
+                        </a>
+                        
+                        <a href="{{ route('allowances.index') }}" class="flex items-center px-3 py-1.5 text-xs text-gray-600 rounded hover:bg-gray-100 transition-colors {{ request()->routeIs('allowances.*') ? 'bg-gray-100 text-gray-900' : '' }}">
+                            <span class="sidebar-text">Tunjangan</span>
+                        </a>
+                        
+                        <a href="{{ route('deductions.index') }}" class="flex items-center px-3 py-1.5 text-xs text-gray-600 rounded hover:bg-gray-100 transition-colors {{ request()->routeIs('deductions.*') ? 'bg-gray-100 text-gray-900' : '' }}">
+                            <span class="sidebar-text">Potongan</span>
+                        </a>
+                    </div>
+                </li>
+            @endcan
         </ul>
     </nav>
     
@@ -165,6 +197,14 @@ function toggleDropdown() {
 function toggleHrDropdown() {
     const dropdown = document.getElementById('hr-dropdown-content');
     const arrow = document.getElementById('hr-dropdown-arrow');
+    dropdown.classList.toggle('hidden');
+    arrow.classList.toggle('rotate-180');
+}
+
+// Toggle Payroll dropdown
+function togglePayrollDropdown() {
+    const dropdown = document.getElementById('payroll-dropdown-content');
+    const arrow = document.getElementById('payroll-dropdown-arrow');
     dropdown.classList.toggle('hidden');
     arrow.classList.toggle('rotate-180');
 }
