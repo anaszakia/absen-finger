@@ -170,6 +170,85 @@
                     </div>
                 </div>
             </div>
+
+            <!-- Step 6: Reset & Sync Fresh Data -->
+            <div class="border rounded-lg p-5 bg-orange-50 border-orange-300">
+                <div class="flex items-start">
+                    <div class="bg-orange-600 text-white rounded-full w-8 h-8 flex items-center justify-center font-bold mr-4 flex-shrink-0">
+                        6
+                    </div>
+                    <div class="flex-1">
+                        <h3 class="text-lg font-semibold mb-3">
+                            <i class="fas fa-sync-alt mr-2"></i>Reset Data Lama & Tarik Data Baru
+                        </h3>
+                        
+                        <div class="bg-red-50 border border-red-300 rounded p-4 mb-4">
+                            <p class="font-semibold text-red-800 mb-2">
+                                <i class="fas fa-exclamation-triangle mr-2"></i>Kapan Perlu Reset Data?
+                            </p>
+                            <ul class="text-sm text-gray-700 space-y-1 list-disc list-inside ml-2">
+                                <li>Setelah menghapus semua data di mesin fingerprint</li>
+                                <li>Setelah registrasi ulang karyawan baru di mesin</li>
+                                <li>Data lama masih muncul padahal sudah dihapus di mesin</li>
+                                <li>Ingin mulai fresh dengan data baru</li>
+                            </ul>
+                        </div>
+
+                        <div class="bg-white border border-orange-300 rounded p-4 mb-4">
+                            <p class="font-semibold text-orange-800 mb-3">
+                                <i class="fas fa-tasks mr-2"></i>Langkah-langkah Reset:
+                            </p>
+                            
+                            <div class="space-y-3">
+                                <div class="bg-gray-50 p-3 rounded border-l-4 border-orange-400">
+                                    <p class="font-semibold text-sm mb-1">1️⃣ Hapus Semua Data Lama di Database</p>
+                                    <p class="text-xs text-gray-600 mb-2">
+                                        Menghapus semua data karyawan dan absensi yang tersimpan di aplikasi
+                                    </p>
+                                    <button onclick="confirmClearData()" 
+                                            id="btnClearData"
+                                            class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded text-sm">
+                                        <i class="fas fa-trash mr-2"></i>Hapus Semua Data Lokal
+                                    </button>
+                                </div>
+
+                                <div class="bg-gray-50 p-3 rounded border-l-4 border-green-400">
+                                    <p class="font-semibold text-sm mb-1">2️⃣ Pastikan Data Baru Sudah di Mesin</p>
+                                    <p class="text-xs text-gray-600">
+                                        Daftarkan karyawan baru di mesin fingerprint, lalu minta mereka scan jari minimal 1x
+                                    </p>
+                                </div>
+
+                                <div class="bg-gray-50 p-3 rounded border-l-4 border-blue-400">
+                                    <p class="font-semibold text-sm mb-1">3️⃣ Tarik Data Baru (Hari Ini Saja)</p>
+                                    <p class="text-xs text-gray-600 mb-2">
+                                        Mengambil data absensi hari ini saja untuk menghindari cache data lama dari server
+                                    </p>
+                                    <button onclick="syncTodayData()" 
+                                            id="btnSyncToday"
+                                            class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm">
+                                        <i class="fas fa-download mr-2"></i>Sync Data Hari Ini
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="bg-yellow-50 border border-yellow-300 rounded p-3">
+                            <p class="text-sm font-semibold text-yellow-800 mb-1">
+                                <i class="fas fa-lightbulb mr-2"></i>Tips Penting:
+                            </p>
+                            <ul class="text-xs text-gray-700 space-y-1 list-disc list-inside ml-2">
+                                <li>Jangan gunakan "Sync User" biasa setelah reset (ambil data 2 hari = data lama masuk)</li>
+                                <li>Gunakan "Sync Data Hari Ini" untuk hanya ambil data fresh</li>
+                                <li>Server Fingerspot.io menyimpan cache beberapa hari, jadi filter by date penting</li>
+                                <li>Jika masih ada data lama, tunggu karyawan scan ulang hari ini</li>
+                            </ul>
+                        </div>
+
+                        <div id="resetResult" class="mt-4"></div>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <!-- Testing Section -->
@@ -455,6 +534,183 @@ function syncUsersFromMachine() {
     .catch(error => {
         btn.disabled = false;
         btn.innerHTML = '<i class="fas fa-sync mr-2"></i>Sync User dari Mesin';
+        
+        resultDiv.innerHTML = `
+            <div class="bg-red-50 border border-red-300 rounded p-3">
+                <i class="fas fa-times-circle text-red-600 mr-2"></i>
+                <strong>Error:</strong> ${error.message}
+            </div>
+        `;
+    });
+}
+
+function confirmClearData() {
+    if (!confirm('⚠️ PERINGATAN!\n\nAnda akan menghapus SEMUA data karyawan dan absensi yang ada di database lokal.\n\nData yang dihapus:\n• Semua data karyawan\n• Semua data absensi\n• Semua webhook logs\n\nData ini TIDAK BISA dikembalikan!\n\nLanjutkan?')) {
+        return;
+    }
+    
+    if (!confirm('Apakah Anda YAKIN?\n\nSetelah data dihapus, Anda harus:\n1. Pastikan mesin sudah ada data baru\n2. Sync data hari ini untuk tarik data baru\n\nKlik OK untuk menghapus data.')) {
+        return;
+    }
+    
+    clearLocalData();
+}
+
+function clearLocalData() {
+    const resultDiv = document.getElementById('resetResult');
+    const btn = document.getElementById('btnClearData');
+    
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Menghapus...';
+    
+    resultDiv.innerHTML = `
+        <div class="bg-yellow-50 border border-yellow-300 rounded p-3">
+            <i class="fas fa-spinner fa-spin mr-2"></i>
+            Menghapus semua data lokal...
+        </div>
+    `;
+    
+    fetch('{{ url("/api/fingerspot/clear-local-data") }}', {
+        method: 'DELETE',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-TOKEN': '{{ csrf_token() }}'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-trash mr-2"></i>Hapus Semua Data Lokal';
+        
+        if (data.success) {
+            resultDiv.innerHTML = `
+                <div class="bg-green-50 border border-green-300 rounded p-4">
+                    <div class="flex items-start mb-3">
+                        <i class="fas fa-check-circle text-green-600 mt-1 mr-2"></i>
+                        <div>
+                            <p class="font-semibold text-green-800">${data.message}</p>
+                            <div class="text-sm text-gray-600 mt-2">
+                                <p>Data yang dihapus:</p>
+                                <ul class="list-disc list-inside ml-2">
+                                    <li>${data.deleted.employees} karyawan</li>
+                                    <li>${data.deleted.attendances} data absensi</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="bg-blue-50 border border-blue-300 rounded p-3 mt-3">
+                        <p class="text-sm font-semibold text-blue-800 mb-2">
+                            <i class="fas fa-arrow-right mr-2"></i>Langkah Selanjutnya:
+                        </p>
+                        <ol class="text-sm text-gray-700 space-y-1 list-decimal list-inside ml-2">
+                            <li>Pastikan mesin sudah ada data karyawan baru</li>
+                            <li>Minta karyawan scan jari di mesin hari ini</li>
+                            <li>Klik tombol "Sync Data Hari Ini" di bawah</li>
+                        </ol>
+                    </div>
+                </div>
+            `;
+        } else {
+            resultDiv.innerHTML = `
+                <div class="bg-red-50 border border-red-300 rounded p-3">
+                    <i class="fas fa-times-circle text-red-600 mr-2"></i>
+                    <strong>Gagal:</strong> ${data.message}
+                </div>
+            `;
+        }
+    })
+    .catch(error => {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-trash mr-2"></i>Hapus Semua Data Lokal';
+        
+        resultDiv.innerHTML = `
+            <div class="bg-red-50 border border-red-300 rounded p-3">
+                <i class="fas fa-times-circle text-red-600 mr-2"></i>
+                <strong>Error:</strong> ${error.message}
+            </div>
+        `;
+    });
+}
+
+function syncTodayData() {
+    const resultDiv = document.getElementById('resetResult');
+    const btn = document.getElementById('btnSyncToday');
+    
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Syncing...';
+    
+    resultDiv.innerHTML = `
+        <div class="bg-blue-50 border border-blue-300 rounded p-3">
+            <i class="fas fa-spinner fa-spin mr-2"></i>
+            Mengambil data absensi hari ini dari mesin...
+        </div>
+    `;
+    
+    fetch('{{ url("/api/fingerspot/sync-today") }}', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-TOKEN': '{{ csrf_token() }}'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-download mr-2"></i>Sync Data Hari Ini';
+        
+        if (data.success) {
+            const users = data.synced?.users || 0;
+            const attendances = data.synced?.attendances || 0;
+            
+            resultDiv.innerHTML = `
+                <div class="bg-green-50 border border-green-300 rounded p-4">
+                    <div class="flex items-start mb-3">
+                        <i class="fas fa-check-circle text-green-600 mt-1 mr-2"></i>
+                        <div class="flex-1">
+                            <p class="font-semibold text-green-800 mb-2">${data.message}</p>
+                            
+                            <div class="grid grid-cols-2 gap-3 mb-3">
+                                <div class="bg-white p-3 rounded border">
+                                    <p class="text-2xl font-bold text-blue-600">${users}</p>
+                                    <p class="text-xs text-gray-600">Karyawan Baru</p>
+                                </div>
+                                <div class="bg-white p-3 rounded border">
+                                    <p class="text-2xl font-bold text-green-600">${attendances}</p>
+                                    <p class="text-xs text-gray-600">Data Absensi</p>
+                                </div>
+                            </div>
+                            
+                            <div class="text-xs text-gray-600 mb-2">
+                                <p>📅 Tanggal: ${data.date}</p>
+                                <p>📊 Total data diterima: ${data.total_data_received}</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="flex gap-2 mt-3">
+                        <a href="{{ route('employees.index') }}" 
+                           class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm">
+                            <i class="fas fa-users mr-1"></i>Lihat Data Karyawan
+                        </a>
+                        <a href="{{ route('attendances.index') }}" 
+                           class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded text-sm">
+                            <i class="fas fa-clipboard-list mr-1"></i>Lihat Data Absensi
+                        </a>
+                    </div>
+                </div>
+            `;
+        } else {
+            resultDiv.innerHTML = `
+                <div class="bg-red-50 border border-red-300 rounded p-3">
+                    <i class="fas fa-times-circle text-red-600 mr-2"></i>
+                    <strong>Gagal:</strong> ${data.message}
+                </div>
+            `;
+        }
+    })
+    .catch(error => {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-download mr-2"></i>Sync Data Hari Ini';
         
         resultDiv.innerHTML = `
             <div class="bg-red-50 border border-red-300 rounded p-3">
