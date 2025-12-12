@@ -31,6 +31,42 @@ class PayrollController extends Controller
         return view('payroll.payrolls.index', compact('payrolls'));
     }
 
+    public function history(Request $request)
+    {
+        // Group payrolls by period with summary data
+        $periodsQuery = Payroll::selectRaw('
+                period,
+                MIN(period_start) as period_start,
+                MAX(period_end) as period_end,
+                COUNT(*) as total_employees,
+                COUNT(CASE WHEN status = "draft" THEN 1 END) as draft_count,
+                COUNT(CASE WHEN status = "approved" THEN 1 END) as approved_count,
+                COUNT(CASE WHEN status = "paid" THEN 1 END) as paid_count,
+                SUM(basic_salary) as total_basic_salary,
+                SUM(total_allowances) as total_allowances,
+                SUM(total_deductions) as total_deductions,
+                SUM(gross_salary) as total_gross_salary,
+                SUM(net_salary) as total_net_salary,
+                MAX(created_at) as latest_created_at
+            ')
+            ->groupBy('period')
+            ->orderBy('period', 'desc');
+
+        // Filter by year if provided
+        if ($request->filled('year')) {
+            $periodsQuery->where('period', 'LIKE', $request->year . '%');
+        }
+
+        $periods = $periodsQuery->paginate(12);
+        
+        // Get available years for filter
+        $years = Payroll::selectRaw('DISTINCT SUBSTRING(period, 1, 4) as year')
+            ->orderBy('year', 'desc')
+            ->pluck('year');
+        
+        return view('payroll.payrolls.history', compact('periods', 'years'));
+    }
+
     public function create()
     {
         $employees = Employee::all();
@@ -59,9 +95,12 @@ class PayrollController extends Controller
             ->whereBetween('date', [$periodStart, $periodEnd])
             ->get();
 
-        $presentDays = $attendances->where('status', 'hadir')->count();
-        $lateDays = $attendances->where('is_late', true)->count();
-        $absentDays = $totalDays - $presentDays;
+        $totalRecords = $attendances->count();
+        $presentDays = $attendances->whereIn('status', ['present', 'late'])->count();
+        $lateDays = $attendances->where('status', 'late')->count();
+        $recordedAbsent = $attendances->where('status', 'absent')->count();
+        $unrecordedDays = $totalDays - $totalRecords;
+        $absentDays = $recordedAbsent + $unrecordedDays;
 
         // Buat payroll
         $payroll = Payroll::create([
@@ -167,9 +206,12 @@ class PayrollController extends Controller
                 ->whereBetween('date', [$periodStart, $periodEnd])
                 ->get();
 
-            $presentDays = $attendances->where('status', 'hadir')->count();
-            $lateDays = $attendances->where('is_late', true)->count();
-            $absentDays = $totalDays - $presentDays;
+            $totalRecords = $attendances->count();
+            $presentDays = $attendances->whereIn('status', ['present', 'late'])->count();
+            $lateDays = $attendances->where('status', 'late')->count();
+            $recordedAbsent = $attendances->where('status', 'absent')->count();
+            $unrecordedDays = $totalDays - $totalRecords;
+            $absentDays = $recordedAbsent + $unrecordedDays;
 
             // Buat payroll
             $payroll = Payroll::create([
@@ -208,6 +250,47 @@ class PayrollController extends Controller
 
         return redirect()->route('payrolls.show', $payroll)
             ->with('success', 'Penggajian berhasil diapprove');
+    }
+
+    public function recalculate(Payroll $payroll)
+    {
+        if ($payroll->status !== 'draft') {
+            return redirect()->route('payrolls.show', $payroll)
+                ->with('error', 'Hanya penggajian dengan status draft yang bisa dihitung ulang');
+        }
+
+        $employee = $payroll->employee;
+        $periodStart = $payroll->period_start;
+        $periodEnd = $payroll->period_end;
+
+        // Hitung total hari dalam periode
+        $totalDays = $periodStart->diffInDays($periodEnd) + 1;
+
+        // Hitung kehadiran
+        $attendances = Attendance::where('employee_id', $employee->id)
+            ->whereBetween('date', [$periodStart, $periodEnd])
+            ->get();
+
+        $totalRecords = $attendances->count();
+        $presentDays = $attendances->whereIn('status', ['present', 'late'])->count();
+        $lateDays = $attendances->where('status', 'late')->count();
+        $recordedAbsent = $attendances->where('status', 'absent')->count();
+        $unrecordedDays = $totalDays - $totalRecords;
+        $absentDays = $recordedAbsent + $unrecordedDays;
+
+        // Update data kehadiran
+        $payroll->update([
+            'total_days' => $totalDays,
+            'present_days' => $presentDays,
+            'late_days' => $lateDays,
+            'absent_days' => $absentDays,
+        ]);
+
+        // Hitung ulang gaji
+        $this->calculatePayroll($payroll);
+
+        return redirect()->route('payrolls.show', $payroll)
+            ->with('success', 'Penggajian berhasil dihitung ulang dengan data attendance terbaru');
     }
 
     public function pay(Payroll $payroll)

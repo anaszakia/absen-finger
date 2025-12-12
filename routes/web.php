@@ -13,6 +13,7 @@ use App\Http\Controllers\SalaryComponentController;
 use App\Http\Controllers\DeductionController;
 use App\Http\Controllers\AllowanceController;
 use App\Http\Controllers\PayrollController;
+use App\Http\Controllers\DebugController;
 
 
 // Public routes for Fingerspot.io webhook (no authentication required)
@@ -215,6 +216,11 @@ Route::middleware(['auth', 'log.sensitive'])->group(function () {
     Route::resource('payrolls', PayrollController::class)
         ->middleware('permission:view payroll');
     
+    // Payroll History - Riwayat per periode
+    Route::get('/payroll-history', [PayrollController::class, 'history'])
+        ->middleware('permission:view payroll')
+        ->name('payrolls.history');
+    
     // Generate payroll untuk periode tertentu
     Route::post('/payrolls/generate', [PayrollController::class, 'generate'])
         ->middleware('permission:create payroll')
@@ -225,10 +231,19 @@ Route::middleware(['auth', 'log.sensitive'])->group(function () {
         ->middleware('permission:approve payroll')
         ->name('payrolls.approve');
     
+    // Recalculate payroll
+    Route::post('/payrolls/{payroll}/recalculate', [PayrollController::class, 'recalculate'])
+        ->middleware('permission:view payroll')
+        ->name('payrolls.recalculate');
+    
     // Pay payroll (mark as paid)
     Route::post('/payrolls/{payroll}/pay', [PayrollController::class, 'markAsPaid'])
         ->middleware('permission:pay payroll')
         ->name('payrolls.pay');
+    
+    // Debug attendance data
+    Route::get('/debug/attendance', [DebugController::class, 'checkAttendance'])
+        ->name('debug.attendance');
 });
 
 Route::redirect('/', '/login');

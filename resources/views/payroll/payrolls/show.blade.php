@@ -10,6 +10,14 @@
             <a href="{{ route('payrolls.index') }}" class="inline-flex items-center bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded-lg shadow-sm">
                 <i class="fas fa-arrow-left mr-2"></i>Kembali
             </a>
+            @if($payroll->status === 'draft')
+                <form action="{{ route('payrolls.recalculate', $payroll) }}" method="POST" class="inline">
+                    @csrf
+                    <button type="submit" class="inline-flex items-center bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-lg shadow-sm" onclick="return confirm('Hitung ulang penggajian ini?')">
+                        <i class="fas fa-sync mr-2"></i>Hitung Ulang
+                    </button>
+                </form>
+            @endif
             <button onclick="window.print()" class="inline-flex items-center bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg shadow-sm">
                 <i class="fas fa-print mr-2"></i>Cetak
             </button>

@@ -129,8 +129,12 @@
                     
                     <!-- Dropdown -->
                     <div id="payroll-dropdown-content" class="hidden mt-1 ml-7 space-y-1">
-                        <a href="{{ route('payrolls.index') }}" class="flex items-center px-3 py-1.5 text-xs text-gray-600 rounded hover:bg-gray-100 transition-colors {{ request()->routeIs('payrolls.*') ? 'bg-gray-100 text-gray-900' : '' }}">
+                        <a href="{{ route('payrolls.index') }}" class="flex items-center px-3 py-1.5 text-xs text-gray-600 rounded hover:bg-gray-100 transition-colors {{ request()->routeIs('payrolls.index') || request()->routeIs('payrolls.show') || request()->routeIs('payrolls.create') || request()->routeIs('payrolls.edit') ? 'bg-gray-100 text-gray-900' : '' }}">
                             <span class="sidebar-text">Daftar Penggajian</span>
+                        </a>
+                        
+                        <a href="{{ route('payrolls.history') }}" class="flex items-center px-3 py-1.5 text-xs text-gray-600 rounded hover:bg-gray-100 transition-colors {{ request()->routeIs('payrolls.history') ? 'bg-gray-100 text-gray-900' : '' }}">
+                            <span class="sidebar-text">Riwayat Periode</span>
                         </a>
                         
                         <a href="{{ route('salary-components.index') }}" class="flex items-center px-3 py-1.5 text-xs text-gray-600 rounded hover:bg-gray-100 transition-colors {{ request()->routeIs('salary-components.*') ? 'bg-gray-100 text-gray-900' : '' }}">
