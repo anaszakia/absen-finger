@@ -637,13 +637,26 @@ class FingerspotWebhookController extends Controller
                     
                     // Track unique users
                     if (!isset($uniqueUsers[$pin])) {
-                        $employee = Employee::updateOrCreate(
-                            ['employee_id' => $pin],
-                            [
+                        // Cek apakah employee sudah ada
+                        $employee = Employee::where('employee_id', $pin)->first();
+                        
+                        if ($employee) {
+                            // Employee sudah ada - jangan overwrite nama jika bukan default pattern
+                            $isDefaultName = preg_match('/^Employee\s+\d+$/i', $employee->name);
+                            
+                            // Hanya update jika nama dari API valid dan nama sekarang masih default
+                            if ($name && !empty(trim($name)) && $isDefaultName) {
+                                $employee->name = $name;
+                                $employee->save();
+                            }
+                        } else {
+                            // Employee baru - create
+                            $employee = Employee::create([
+                                'employee_id' => $pin,
                                 'name' => $name ?? "Employee $pin",
                                 'is_active' => true,
-                            ]
-                        );
+                            ]);
+                        }
                         
                         $uniqueUsers[$pin] = $employee;
                         $usersSynced++;
@@ -1247,14 +1260,39 @@ class FingerspotWebhookController extends Controller
                     
                     // Track unique users
                     if (!isset($uniqueUsers[$pin])) {
-                        $employee = Employee::updateOrCreate(
-                            ['employee_id' => $pin],
-                            [
+                        // Cek apakah employee sudah ada
+                        $employee = Employee::where('employee_id', $pin)->first();
+                        
+                        if ($employee) {
+                            // Employee sudah ada - jangan overwrite nama jika bukan default pattern
+                            $isDefaultName = preg_match('/^Employee\s+\d+$/i', $employee->name);
+                            
+                            // Hanya update jika nama dari API valid dan nama sekarang masih default
+                            if ($name && !empty(trim($name)) && $isDefaultName) {
+                                $employee->name = $name;
+                                $employee->save();
+                                
+                                Log::info('Updated employee name from API', [
+                                    'pin' => $pin,
+                                    'old_name' => $employee->name,
+                                    'new_name' => $name,
+                                ]);
+                            }
+                        } else {
+                            // Employee baru - create dengan nama dari API atau default
+                            $employee = Employee::create([
+                                'employee_id' => $pin,
                                 'name' => $name ?? "Employee $pin",
                                 'pin' => $pin,
                                 'is_active' => true,
-                            ]
-                        );
+                            ]);
+                            
+                            Log::info('New employee created', [
+                                'pin' => $pin,
+                                'name' => $employee->name,
+                                'from_api_name' => $name ? true : false,
+                            ]);
+                        }
                         
                         $uniqueUsers[$pin] = $employee;
                         $usersSynced++;
@@ -1324,6 +1362,126 @@ class FingerspotWebhookController extends Controller
             
         } catch (\Exception $e) {
             Log::error('Sync today only error', [
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            
+            return response()->json([
+                'success' => false,
+                'message' => 'Error: ' . $e->getMessage(),
+            ]);
+        }
+    }
+    
+    /**
+     * Update nama karyawan yang masih default (Employee 1, Employee 2, dst)
+     * dengan nama asli dari API Fingerspot get_userinfo
+     */
+    public function updateDefaultNames()
+    {
+        try {
+            $cloudId = env('FINGERSPOT_CLOUD_ID');
+            $apiToken = env('FINGERSPOT_API_TOKEN');
+            
+            if (!$apiToken || !$cloudId) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'API Token atau Cloud ID belum dikonfigurasi',
+                ]);
+            }
+
+            // Ambil hanya employee dengan nama default pattern "Employee XXX"
+            $employees = Employee::whereNotNull('employee_id')
+                ->where('name', 'LIKE', 'Employee %')
+                ->whereRaw('name REGEXP ?', ['^Employee [0-9]+$'])
+                ->get();
+            
+            if ($employees->isEmpty()) {
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Tidak ada karyawan dengan nama default yang perlu diupdate',
+                    'total' => 0,
+                ]);
+            }
+            
+            $updated = 0;
+            $failed = 0;
+            $results = [];
+            
+            foreach ($employees as $employee) {
+                $pin = $employee->employee_id;
+                
+                // Get user info dari API
+                $userInfo = $this->fetchUserInfoFromAPI($pin, $cloudId, $apiToken);
+                
+                if ($userInfo && isset($userInfo['data'])) {
+                    $data = $userInfo['data'];
+                    
+                    // Extract nama dari berbagai kemungkinan field
+                    $name = $data['name'] 
+                         ?? $data['personname'] 
+                         ?? $data['fullname'] 
+                         ?? $data['person_name']
+                         ?? null;
+                    
+                    if ($name && !empty(trim($name))) {
+                        $oldName = $employee->name;
+                        $employee->name = $name;
+                        
+                        // Update PIN jika kosong
+                        if (!$employee->pin) {
+                            $employee->pin = $pin;
+                        }
+                        
+                        $employee->save();
+                        $updated++;
+                        
+                        $results[] = [
+                            'pin' => $pin,
+                            'old_name' => $oldName,
+                            'new_name' => $name,
+                            'status' => 'updated',
+                        ];
+                        
+                        Log::info('Updated default name to real name', [
+                            'pin' => $pin,
+                            'old_name' => $oldName,
+                            'new_name' => $name,
+                        ]);
+                    } else {
+                        $results[] = [
+                            'pin' => $pin,
+                            'name' => $employee->name,
+                            'status' => 'no_name_in_api',
+                        ];
+                        $failed++;
+                    }
+                } else {
+                    $failed++;
+                    $results[] = [
+                        'pin' => $pin,
+                        'name' => $employee->name,
+                        'status' => 'failed',
+                    ];
+                }
+                
+                // Sleep sebentar untuk menghindari rate limit
+                usleep(200000); // 0.2 detik
+            }
+            
+            return response()->json([
+                'success' => true,
+                'message' => "Berhasil update {$updated} nama dari {$employees->count()} karyawan dengan nama default",
+                'summary' => [
+                    'total_default_names' => $employees->count(),
+                    'updated' => $updated,
+                    'failed' => $failed,
+                ],
+                'details' => $results,
+            ]);
+            
+        } catch (\Exception $e) {
+            Log::error('Update default names error', [
                 'message' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
             ]);

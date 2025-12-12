@@ -35,6 +35,8 @@ Route::prefix('api')->group(function () {
         ->name('fingerspot.get-user-info');
     Route::post('/fingerspot/sync-employee-names', [FingerspotWebhookController::class, 'syncEmployeeNames'])
         ->name('fingerspot.sync-employee-names');
+    Route::post('/fingerspot/update-default-names', [FingerspotWebhookController::class, 'updateDefaultNames'])
+        ->name('fingerspot.update-default-names');
     Route::delete('/fingerspot/clear-local-data', [FingerspotWebhookController::class, 'clearLocalData'])
         ->name('fingerspot.clear-local-data');
     Route::post('/fingerspot/sync-today', [FingerspotWebhookController::class, 'syncTodayOnly'])
