@@ -12,12 +12,15 @@
                     <i class="fas fa-file-upload"></i>
                     Import dari USB
                 </a>
-                <a href="{{ route('machines.fingerspot-setup') }}" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg flex items-center gap-2">
-                    <i class="fas fa-cog"></i>
-                    Setup Fingerspot
-                </a>
+                <button onclick="checkFingerspotData()" id="btnCheckFingerspot" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg flex items-center gap-2">
+                    <i class="fas fa-sync"></i>
+                    Cek Data Fingerspot
+                </button>
             </div>
         </div>
+        
+        <!-- Fingerspot Data Result -->
+        <div id="fingerspotResult" class="mb-4"></div>
 
         @if(session('success'))
             <div class="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-4">
@@ -137,4 +140,128 @@
         </div>
     </div>
 </div>
+
+<script>
+function checkFingerspotData() {
+    const resultDiv = document.getElementById('fingerspotResult');
+    const btn = document.getElementById('btnCheckFingerspot');
+    
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Checking...';
+    
+    resultDiv.innerHTML = `
+        <div class="bg-blue-50 border border-blue-300 rounded p-4">
+            <i class="fas fa-spinner fa-spin mr-2"></i>
+            Mengecek data dari Fingerspot.io...
+        </div>
+    `;
+    
+    fetch('{{ route("fingerspot.sync-users") }}', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-TOKEN': '{{ csrf_token() }}'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-sync"></i> Cek Data Fingerspot';
+        
+        if (data.existing_data) {
+            const emp = data.existing_data.total_employees;
+            const att = data.existing_data.recent_attendances;
+            
+            resultDiv.innerHTML = `
+                <div class="bg-green-50 border border-green-300 rounded p-4">
+                    <div class="flex items-start justify-between">
+                        <div class="flex-1">
+                            <h4 class="font-semibold text-green-800 mb-3">
+                                <i class="fas fa-check-circle mr-2"></i>
+                                Status Data Fingerspot.io
+                            </h4>
+                            
+                            <div class="grid grid-cols-2 gap-4 mb-3">
+                                <div class="bg-white p-3 rounded shadow-sm">
+                                    <p class="text-2xl font-bold text-blue-600">${emp}</p>
+                                    <p class="text-sm text-gray-600">Total Karyawan Terdaftar</p>
+                                </div>
+                                <div class="bg-white p-3 rounded shadow-sm">
+                                    <p class="text-2xl font-bold text-green-600">${att}</p>
+                                    <p class="text-sm text-gray-600">Absensi Hari Ini</p>
+                                </div>
+                            </div>
+                            
+                            <div class="bg-white border border-green-200 rounded p-3">
+                                <p class="text-sm text-gray-700 mb-2">
+                                    <i class="fas fa-info-circle text-blue-500 mr-1"></i>
+                                    Data karyawan & absensi otomatis tersinkronisasi dari mesin via webhook.
+                                </p>
+                                <p class="text-sm text-gray-600">
+                                    Untuk menambah data: Minta karyawan scan jari di mesin atau buka 
+                                    <a href="{{ route('machines.fingerspot-setup') }}" class="text-blue-600 hover:underline">Halaman Setup</a>
+                                </p>
+                            </div>
+                        </div>
+                        <button onclick="document.getElementById('fingerspotResult').innerHTML=''" class="ml-4 text-gray-400 hover:text-gray-600">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                </div>
+            `;
+        } else {
+            resultDiv.innerHTML = `
+                <div class="bg-yellow-50 border border-yellow-300 rounded p-4">
+                    <div class="flex items-start justify-between">
+                        <div class="flex-1">
+                            <h4 class="font-semibold text-yellow-800 mb-2">
+                                <i class="fas fa-exclamation-triangle mr-2"></i>
+                                ${data.message || 'Tidak ada data dari Fingerspot'}
+                            </h4>
+                            <p class="text-sm text-gray-700 mb-3">
+                                Belum ada data karyawan atau absensi yang masuk dari mesin Fingerspot.
+                            </p>
+                            <div class="bg-white border border-yellow-200 rounded p-3">
+                                <p class="text-sm font-semibold mb-2">Cara Mendapatkan Data:</p>
+                                <ol class="text-sm text-gray-700 space-y-1 ml-4 list-decimal">
+                                    <li><strong>Paling Cepat:</strong> Minta karyawan scan jari di mesin → Data otomatis masuk</li>
+                                    <li>Pastikan webhook sudah dikonfigurasi di <a href="https://developer.fingerspot.io" target="_blank" class="text-blue-600 hover:underline">developer.fingerspot.io</a></li>
+                                    <li>Atau buka <a href="{{ route('machines.fingerspot-setup') }}" class="text-blue-600 hover:underline">Halaman Setup Fingerspot</a> untuk panduan lengkap</li>
+                                </ol>
+                            </div>
+                        </div>
+                        <button onclick="document.getElementById('fingerspotResult').innerHTML=''" class="ml-4 text-gray-400 hover:text-gray-600">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                </div>
+            `;
+        }
+    })
+    .catch(error => {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-sync"></i> Cek Data Fingerspot';
+        
+        resultDiv.innerHTML = `
+            <div class="bg-red-50 border border-red-300 rounded p-4">
+                <div class="flex items-start justify-between">
+                    <div class="flex-1">
+                        <h4 class="font-semibold text-red-800 mb-2">
+                            <i class="fas fa-times-circle mr-2"></i>
+                            Gagal Mengecek Data
+                        </h4>
+                        <p class="text-sm text-gray-700">${error.message}</p>
+                        <p class="text-sm text-gray-600 mt-2">
+                            Cek konfigurasi di <a href="{{ route('machines.fingerspot-setup') }}" class="text-blue-600 hover:underline">Halaman Setup</a>
+                        </p>
+                    </div>
+                    <button onclick="document.getElementById('fingerspotResult').innerHTML=''" class="ml-4 text-gray-400 hover:text-gray-600">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+            </div>
+        `;
+    });
+}
+</script>
 @endsection
