@@ -150,12 +150,6 @@
                                 <i class="fas fa-database mr-2"></i>Cek Data yang Sudah Masuk
                             </button>
                             
-                            <button onclick="updateDefaultNames()" 
-                                    id="btnUpdateNames"
-                                    class="bg-orange-600 hover:bg-orange-700 text-white px-6 py-2 rounded-lg">
-                                <i class="fas fa-user-edit mr-2"></i>Update Nama Default
-                            </button>
-                            
                             <button onclick="testWebhook()" 
                                     class="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-lg">
                                 <i class="fas fa-vial mr-2"></i>Test Webhook
@@ -219,35 +213,50 @@
                                 </div>
 
                                 <div class="bg-gray-50 p-3 rounded border-l-4 border-green-400">
-                                    <p class="font-semibold text-sm mb-1">2️⃣ Pastikan Data Baru Sudah di Mesin</p>
+                                    <p class="font-semibold text-sm mb-1">2️⃣ Registrasi Karyawan Baru di Mesin</p>
                                     <p class="text-xs text-gray-600">
-                                        Daftarkan karyawan baru di mesin fingerprint, lalu minta mereka scan jari minimal 1x
+                                        Daftarkan karyawan baru di mesin fingerprint, pastikan registrasi berhasil
                                     </p>
                                 </div>
 
                                 <div class="bg-gray-50 p-3 rounded border-l-4 border-blue-400">
-                                    <p class="font-semibold text-sm mb-1">3️⃣ Tarik Data Baru (Hari Ini Saja)</p>
+                                    <p class="font-semibold text-sm mb-1">3️⃣ Minta Karyawan Scan Jari</p>
                                     <p class="text-xs text-gray-600 mb-2">
-                                        Mengambil data absensi hari ini saja untuk menghindari cache data lama dari server
+                                        Karyawan baru scan jari → Data otomatis masuk via webhook (real-time)
                                     </p>
-                                    <button onclick="syncTodayData()" 
-                                            id="btnSyncToday"
-                                            class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm">
-                                        <i class="fas fa-download mr-2"></i>Sync Data Hari Ini
-                                    </button>
+                                    <div class="bg-yellow-50 border border-yellow-300 rounded p-2 mt-2">
+                                        <p class="text-xs font-semibold text-yellow-800">
+                                            ⚠️ JANGAN gunakan "Sync Data Hari Ini" setelah clear!
+                                        </p>
+                                        <p class="text-xs text-gray-700 mt-1">
+                                            API sync mengambil data dari cache server yang masih ada data lama. 
+                                            <strong>Tunggu webhook</strong> saja untuk data real-time dari mesin.
+                                        </p>
+                                    </div>
+                                </div>
+                                
+                                <div class="bg-gray-50 p-3 rounded border-l-4 border-purple-400">
+                                    <p class="font-semibold text-sm mb-1">4️⃣ Cek & Bersihkan Data (Opsional)</p>
+                                    <p class="text-xs text-gray-600 mb-2">
+                                        Jika masih ada karyawan lama yang masuk, hapus manual dari menu Data Karyawan
+                                    </p>
+                                    <a href="{{ route('employees.index') }}" 
+                                       class="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded text-sm inline-block">
+                                        <i class="fas fa-users mr-1"></i>Kelola Data Karyawan
+                                    </a>
                                 </div>
                             </div>
                         </div>
 
-                        <div class="bg-yellow-50 border border-yellow-300 rounded p-3">
-                            <p class="text-sm font-semibold text-yellow-800 mb-1">
-                                <i class="fas fa-lightbulb mr-2"></i>Tips Penting:
+                        <div class="bg-red-50 border border-red-300 rounded p-3">
+                            <p class="text-sm font-semibold text-red-800 mb-1">
+                                <i class="fas fa-exclamation-triangle mr-2"></i>Kenapa Sync Manual Tidak Direkomendasikan?
                             </p>
                             <ul class="text-xs text-gray-700 space-y-1 list-disc list-inside ml-2">
-                                <li>Jangan gunakan "Sync User" biasa setelah reset (ambil data 2 hari = data lama masuk)</li>
-                                <li>Gunakan "Sync Data Hari Ini" untuk hanya ambil data fresh</li>
-                                <li>Server Fingerspot.io menyimpan cache beberapa hari, jadi filter by date penting</li>
-                                <li>Jika masih ada data lama, tunggu karyawan scan ulang hari ini</li>
+                                <li>Server Fingerspot.io menyimpan cache data beberapa hari</li>
+                                <li>Data cache tidak bisa dibedakan mana yang lama, mana yang baru</li>
+                                <li>Timestamp di cache adalah waktu server, bukan waktu scan di mesin</li>
+                                <li><strong>Solusi:</strong> Tunggu webhook (real-time) atau hapus manual</li>
                             </ul>
                         </div>
 
@@ -609,10 +618,28 @@ function clearLocalData() {
                             <i class="fas fa-arrow-right mr-2"></i>Langkah Selanjutnya:
                         </p>
                         <ol class="text-sm text-gray-700 space-y-1 list-decimal list-inside ml-2">
-                            <li>Pastikan mesin sudah ada data karyawan baru</li>
-                            <li>Minta karyawan scan jari di mesin hari ini</li>
-                            <li>Klik tombol "Sync Data Hari Ini" di bawah</li>
+                            <li>Registrasi karyawan baru di mesin fingerprint</li>
+                            <li>Minta karyawan baru scan jari di mesin</li>
+                            <li>Data otomatis masuk via webhook (real-time)</li>
                         </ol>
+                        <div class="bg-yellow-50 border border-yellow-300 rounded p-2 mt-2">
+                            <p class="text-xs font-semibold text-yellow-800">
+                                ${data.important || '⚠️ JANGAN gunakan Sync Manual setelah clear'}
+                            </p>
+                            <p class="text-xs text-gray-700">
+                                ${data.reason || 'Tunggu webhook saja untuk data real-time dari mesin'}
+                            </p>
+                        </div>
+                        <div class="flex gap-2 mt-3">
+                            <a href="{{ route('employees.index') }}" 
+                               class="bg-purple-600 hover:bg-purple-700 text-white px-3 py-2 rounded text-xs">
+                                <i class="fas fa-users mr-1"></i>Cek Data Karyawan
+                            </a>
+                            <a href="{{ route('attendances.index') }}" 
+                               class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded text-xs">
+                                <i class="fas fa-clipboard-list mr-1"></i>Cek Data Absensi
+                            </a>
+                        </div>
                     </div>
                 </div>
             `;
@@ -696,9 +723,6 @@ function syncTodayData() {
                     </div>
                     
                     <div class="flex gap-2 mt-3">
-                        <button onclick="updateDefaultNames()" class="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded text-sm">
-                            <i class="fas fa-user-edit mr-1"></i>Update Nama Default
-                        </button>
                         <a href="{{ route('employees.index') }}" 
                            class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm">
                             <i class="fas fa-users mr-1"></i>Lihat Data Karyawan
@@ -722,118 +746,6 @@ function syncTodayData() {
     .catch(error => {
         btn.disabled = false;
         btn.innerHTML = '<i class="fas fa-download mr-2"></i>Sync Data Hari Ini';
-        
-        resultDiv.innerHTML = `
-            <div class="bg-red-50 border border-red-300 rounded p-3">
-                <i class="fas fa-times-circle text-red-600 mr-2"></i>
-                <strong>Error:</strong> ${error.message}
-            </div>
-        `;
-    });
-}
-
-function updateDefaultNames() {
-    const resultDiv = document.getElementById('syncResult');
-    const btn = document.getElementById('btnUpdateNames');
-    
-    btn.disabled = true;
-    btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Updating...';
-    
-    resultDiv.innerHTML = `
-        <div class="bg-blue-50 border border-blue-300 rounded p-3">
-            <i class="fas fa-spinner fa-spin mr-2"></i>
-            Mengambil nama asli dari API Fingerspot untuk karyawan dengan nama default...
-        </div>
-    `;
-    
-    fetch('{{ url("/api/fingerspot/update-default-names") }}', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-CSRF-TOKEN': '{{ csrf_token() }}'
-        }
-    })
-    .then(response => response.json())
-    .then(data => {
-        btn.disabled = false;
-        btn.innerHTML = '<i class="fas fa-user-edit mr-2"></i>Update Nama Default';
-        
-        if (data.success) {
-            const updated = data.summary?.updated || 0;
-            const failed = data.summary?.failed || 0;
-            const total = data.summary?.total_default_names || 0;
-            
-            if (total === 0) {
-                resultDiv.innerHTML = `
-                    <div class="bg-blue-50 border border-blue-300 rounded p-3">
-                        <i class="fas fa-info-circle text-blue-600 mr-2"></i>
-                        <strong>${data.message}</strong>
-                        <p class="text-sm text-gray-600 mt-2">Semua karyawan sudah memiliki nama yang sesuai.</p>
-                    </div>
-                `;
-            } else {
-                resultDiv.innerHTML = `
-                    <div class="bg-green-50 border border-green-300 rounded p-4">
-                        <div class="flex items-start mb-3">
-                            <i class="fas fa-check-circle text-green-600 mt-1 mr-2"></i>
-                            <div class="flex-1">
-                                <p class="font-semibold text-green-800 mb-2">${data.message}</p>
-                                
-                                <div class="grid grid-cols-3 gap-3 mb-3">
-                                    <div class="bg-white p-3 rounded border text-center">
-                                        <p class="text-xl font-bold text-gray-600">${total}</p>
-                                        <p class="text-xs text-gray-600">Total</p>
-                                    </div>
-                                    <div class="bg-white p-3 rounded border text-center">
-                                        <p class="text-xl font-bold text-green-600">${updated}</p>
-                                        <p class="text-xs text-gray-600">Berhasil</p>
-                                    </div>
-                                    <div class="bg-white p-3 rounded border text-center">
-                                        <p class="text-xl font-bold text-red-600">${failed}</p>
-                                        <p class="text-xs text-gray-600">Gagal</p>
-                                    </div>
-                                </div>
-                                
-                                ${data.details && data.details.length > 0 ? `
-                                    <div class="bg-white p-3 rounded border mt-3 max-h-40 overflow-y-auto">
-                                        <p class="text-xs font-semibold text-gray-700 mb-2">Detail Update:</p>
-                                        <ul class="text-xs space-y-1">
-                                            ${data.details.filter(d => d.status === 'updated').slice(0, 10).map(d => `
-                                                <li class="text-gray-600">
-                                                    <span class="text-green-600">✓</span> 
-                                                    PIN ${d.pin}: <span class="line-through">${d.old_name}</span> → <strong>${d.new_name}</strong>
-                                                </li>
-                                            `).join('')}
-                                            ${data.details.filter(d => d.status === 'updated').length > 10 ? `
-                                                <li class="text-gray-500 italic">... dan ${data.details.filter(d => d.status === 'updated').length - 10} lainnya</li>
-                                            ` : ''}
-                                        </ul>
-                                    </div>
-                                ` : ''}
-                            </div>
-                        </div>
-                        
-                        <div class="flex gap-2 mt-3">
-                            <a href="{{ route('employees.index') }}" 
-                               class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm">
-                                <i class="fas fa-users mr-1"></i>Lihat Data Karyawan
-                            </a>
-                        </div>
-                    </div>
-                `;
-            }
-        } else {
-            resultDiv.innerHTML = `
-                <div class="bg-red-50 border border-red-300 rounded p-3">
-                    <i class="fas fa-times-circle text-red-600 mr-2"></i>
-                    <strong>Gagal:</strong> ${data.message}
-                </div>
-            `;
-        }
-    })
-    .catch(error => {
-        btn.disabled = false;
-        btn.innerHTML = '<i class="fas fa-user-edit mr-2"></i>Update Nama Default';
         
         resultDiv.innerHTML = `
             <div class="bg-red-50 border border-red-300 rounded p-3">

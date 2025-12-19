@@ -740,51 +740,6 @@ class FingerspotWebhookController extends Controller
 
     
     /**
-     * Helper function to fetch user info from Fingerspot API
-     */
-    private function fetchUserInfoFromAPI($pin, $cloudId, $apiToken)
-    {
-        try {
-            $url = "https://developer.fingerspot.io/api/get_userinfo";
-            
-            $postData = [
-                'trans_id' => "1",
-                'cloud_id' => $cloudId,
-                'pin' => $pin,
-            ];
-            
-            $ch = curl_init($url);
-            curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 0);
-            curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, 0);
-            curl_setopt($ch, CURLOPT_POST, 1);
-            curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($postData));
-            curl_setopt($ch, CURLOPT_HTTPHEADER, [
-                'Content-Type: application/json',
-                'Authorization: Bearer ' . $apiToken
-            ]);
-            curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
-            curl_setopt($ch, CURLOPT_FOLLOWLOCATION, 1);
-            curl_setopt($ch, CURLOPT_TIMEOUT, 10);
-            
-            $response = curl_exec($ch);
-            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-            curl_close($ch);
-            
-            if ($httpCode === 200) {
-                return json_decode($response, true);
-            }
-            
-            return null;
-        } catch (\Exception $e) {
-            Log::warning('Failed to fetch user info', [
-                'pin' => $pin,
-                'error' => $e->getMessage(),
-            ]);
-            return null;
-        }
-    }
-    
-    /**
      * Clear all local data (employees and attendances)
      * Gunakan ini jika ingin reset semua data dan sync ulang dari mesin
      */
@@ -814,13 +769,13 @@ class FingerspotWebhookController extends Controller
             DB::commit();
             
             // Simpan timestamp reset untuk filter data lama saat sync
-            $resetTime = now()->toDateTimeString();
-            cache()->put('fingerspot_last_reset_time', $resetTime, now()->addDays(7));
+            $resetTime = now();
+            cache()->put('fingerspot_last_reset_time', $resetTime->toDateTimeString(), now()->addDays(30));
             
             Log::info('Local data cleared successfully', [
                 'deleted_employees' => $deletedEmployees,
                 'deleted_attendances' => $deletedAttendances,
-                'reset_time' => $resetTime,
+                'reset_time' => $resetTime->toDateTimeString(),
             ]);
             
             return response()->json([
@@ -830,9 +785,10 @@ class FingerspotWebhookController extends Controller
                     'employees' => $deletedEmployees,
                     'attendances' => $deletedAttendances,
                 ],
-                'reset_time' => $resetTime,
-                'next_step' => 'Silakan jalankan Sync Data Hari Ini untuk mengambil data baru dari mesin',
-                'important' => 'Sistem akan otomatis mengabaikan data lama sebelum ' . $resetTime,
+                'reset_time' => $resetTime->toDateTimeString(),
+                'next_step' => 'Minta karyawan baru scan jari di mesin → Data otomatis masuk via webhook',
+                'important' => '⚠️ JANGAN gunakan Sync Manual setelah clear - tunggu webhook saja!',
+                'reason' => 'API sync ambil data dari cache server yang masih punya data lama. Webhook = real-time dari mesin.',
             ]);
             
         } catch (\Exception $e) {
@@ -1107,10 +1063,10 @@ class FingerspotWebhookController extends Controller
     }
     
     /**
-     * Update nama karyawan yang masih default (Employee 1, Employee 2, dst)
-     * dengan nama asli dari API Fingerspot get_userinfo
+     * Sync data dengan rentang waktu fleksibel (default 7 hari ke belakang)
+     * Gunakan setelah clearLocalData() untuk mengambil semua data kembali
      */
-    public function updateDefaultNames()
+    public function syncLastDays(Request $request)
     {
         try {
             $cloudId = env('FINGERSPOT_CLOUD_ID');
@@ -1123,98 +1079,192 @@ class FingerspotWebhookController extends Controller
                 ]);
             }
 
-            // Ambil hanya employee dengan nama default pattern "Employee XXX"
-            $employees = Employee::whereNotNull('employee_id')
-                ->where('name', 'LIKE', 'Employee %')
-                ->whereRaw('name REGEXP ?', ['^Employee [0-9]+$'])
-                ->get();
+            // Ambil parameter days dari request, default 7 hari
+            $days = $request->input('days', 7);
             
-            if ($employees->isEmpty()) {
+            $url = "https://developer.fingerspot.io/api/get_attlog";
+            
+            $today = date('Y-m-d');
+            $startDate = date('Y-m-d', strtotime("-{$days} days"));
+            
+            $postData = [
+                'trans_id' => uniqid(),
+                'cloud_id' => $cloudId,
+                'start_date' => $startDate,
+                'end_date' => $today,
+            ];
+            
+            Log::info('Sync last days - Request', $postData);
+            
+            $ch = curl_init($url);
+            curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 0);
+            curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, 0);
+            curl_setopt($ch, CURLOPT_POST, 1);
+            curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($postData));
+            curl_setopt($ch, CURLOPT_HTTPHEADER, [
+                'Content-Type: application/json',
+                'Authorization: Bearer ' . $apiToken
+            ]);
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
+            curl_setopt($ch, CURLOPT_FOLLOWLOCATION, 1);
+            curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+            
+            $response = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $error = curl_error($ch);
+            curl_close($ch);
+            
+            if ($error) {
                 return response()->json([
-                    'success' => true,
-                    'message' => 'Tidak ada karyawan dengan nama default yang perlu diupdate',
-                    'total' => 0,
+                    'success' => false,
+                    'message' => 'Connection error: ' . $error,
                 ]);
             }
             
-            $updated = 0;
-            $failed = 0;
-            $results = [];
+            $responseData = json_decode($response, true);
             
-            foreach ($employees as $employee) {
-                $pin = $employee->employee_id;
+            Log::info('Sync last days - Response', [
+                'http_code' => $httpCode,
+                'data_count' => isset($responseData['data']) ? count($responseData['data']) : 0,
+            ]);
+            
+            if ($httpCode !== 200) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'API Error (HTTP ' . $httpCode . ')',
+                    'http_code' => $httpCode,
+                ]);
+            }
+            
+            if (isset($responseData['error_code'])) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'API Error: ' . ($responseData['message'] ?? $responseData['error_code']),
+                ]);
+            }
+            
+            // Process data tanpa filter reset time
+            $usersSynced = 0;
+            $attendancesSynced = 0;
+            $skippedOldData = 0;
+            $uniqueUsers = [];
+            
+            // Cek apakah ada filter waktu reset
+            $lastResetTime = cache()->get('fingerspot_last_reset_time');
+            
+            if (isset($responseData['data']) && is_array($responseData['data'])) {
+                $machine = AttendanceMachine::where('serial_number', $cloudId)->first();
                 
-                // Get user info dari API
-                $userInfo = $this->fetchUserInfoFromAPI($pin, $cloudId, $apiToken);
-                
-                if ($userInfo && isset($userInfo['data'])) {
-                    $data = $userInfo['data'];
-                    
-                    // Extract nama dari berbagai kemungkinan field
-                    $name = $data['name'] 
-                         ?? $data['personname'] 
-                         ?? $data['fullname'] 
-                         ?? $data['person_name']
-                         ?? null;
-                    
-                    if ($name && !empty(trim($name))) {
-                        $oldName = $employee->name;
-                        $employee->name = $name;
-                        
-                        // Update PIN jika kosong
-                        if (!$employee->pin) {
-                            $employee->pin = $pin;
-                        }
-                        
-                        $employee->save();
-                        $updated++;
-                        
-                        $results[] = [
-                            'pin' => $pin,
-                            'old_name' => $oldName,
-                            'new_name' => $name,
-                            'status' => 'updated',
-                        ];
-                        
-                        Log::info('Updated default name to real name', [
-                            'pin' => $pin,
-                            'old_name' => $oldName,
-                            'new_name' => $name,
-                        ]);
-                    } else {
-                        $results[] = [
-                            'pin' => $pin,
-                            'name' => $employee->name,
-                            'status' => 'no_name_in_api',
-                        ];
-                        $failed++;
-                    }
-                } else {
-                    $failed++;
-                    $results[] = [
-                        'pin' => $pin,
-                        'name' => $employee->name,
-                        'status' => 'failed',
-                    ];
+                if (!$machine) {
+                    $machine = AttendanceMachine::create([
+                        'name' => 'Fingerspot Device',
+                        'serial_number' => $cloudId,
+                        'ip_address' => 'FDEVICE.COM',
+                        'port' => 9003,
+                        'location' => 'Auto-registered',
+                        'is_active' => true,
+                    ]);
                 }
                 
-                // Sleep sebentar untuk menghindari rate limit
-                usleep(200000); // 0.2 detik
+                foreach ($responseData['data'] as $record) {
+                    $pin = $record['pin'] ?? $record['personid'] ?? null;
+                    $name = $record['personname'] ?? $record['name'] ?? null;
+                    $scanDate = $record['scan_date'] ?? $record['datetime'] ?? null;
+                    
+                    if (!$pin || !$scanDate) continue;
+                    
+                    $scanDateTime = Carbon::parse($scanDate);
+                    
+                    // FILTER: Jika ada reset time, HANYA ambil data absensi SETELAH waktu reset
+                    // Ini untuk menghindari data karyawan lama yang sudah dihapus dari mesin
+                    if ($lastResetTime) {
+                        $resetDateTime = Carbon::parse($lastResetTime);
+                        if ($scanDateTime->lessThanOrEqualTo($resetDateTime)) {
+                            Log::info('Skipping old data before reset', [
+                                'pin' => $pin,
+                                'scan_time' => $scanDateTime->toDateTimeString(),
+                                'reset_time' => $resetDateTime->toDateTimeString(),
+                            ]);
+                            $skippedOldData++;
+                            continue;
+                        }
+                    }
+                    
+                    // Track unique users
+                    if (!isset($uniqueUsers[$pin])) {
+                        $employee = Employee::where('employee_id', $pin)->first();
+                        
+                        if ($employee) {
+                            // Update nama jika masih default
+                            $isDefaultName = preg_match('/^Employee\s+\d+$/i', $employee->name);
+                            if ($name && !empty(trim($name)) && $isDefaultName) {
+                                $employee->name = $name;
+                                $employee->save();
+                            }
+                        } else {
+                            // Create employee baru
+                            $employee = Employee::create([
+                                'employee_id' => $pin,
+                                'name' => $name ?? "Employee $pin",
+                                'pin' => $pin,
+                                'is_active' => true,
+                            ]);
+                            
+                            Log::info('New employee created', [
+                                'pin' => $pin,
+                                'name' => $employee->name,
+                            ]);
+                        }
+                        
+                        $uniqueUsers[$pin] = $employee;
+                        $usersSynced++;
+                    } else {
+                        $employee = $uniqueUsers[$pin];
+                    }
+                    
+                    // Save attendance
+                    $date = $scanDateTime->format('Y-m-d');
+                    $time = $scanDateTime->format('H:i:s');
+                    
+                    $attendance = Attendance::where('employee_id', $employee->id)
+                                          ->where('date', $date)
+                                          ->first();
+                    
+                    if (!$attendance) {
+                        Attendance::create([
+                            'employee_id' => $employee->id,
+                            'attendance_machine_id' => $machine->id,
+                            'date' => $date,
+                            'check_in' => $time,
+                            'status' => $scanDateTime->format('H:i') > '08:00' ? 'late' : 'present',
+                        ]);
+                        $attendancesSynced++;
+                    } elseif (!$attendance->check_out && $time > $attendance->check_in) {
+                        $attendance->check_out = $time;
+                        $attendance->save();
+                        $attendancesSynced++;
+                    }
+                }
             }
+            
+            $totalReceived = isset($responseData['data']) ? count($responseData['data']) : 0;
             
             return response()->json([
                 'success' => true,
-                'message' => "Berhasil update {$updated} nama dari {$employees->count()} karyawan dengan nama default",
-                'summary' => [
-                    'total_default_names' => $employees->count(),
-                    'updated' => $updated,
-                    'failed' => $failed,
+                'message' => "Sync {$days} hari terakhir selesai: {$usersSynced} user, {$attendancesSynced} absensi",
+                'date_range' => "$startDate s/d $today",
+                'synced' => [
+                    'users' => $usersSynced,
+                    'attendances' => $attendancesSynced,
                 ],
-                'details' => $results,
+                'total_data_received' => $totalReceived,
+                'skipped_old_data' => $skippedOldData,
+                'filter_active' => $lastResetTime ? true : false,
+                'filter_time' => $lastResetTime ? Carbon::parse($lastResetTime)->format('d/m/Y H:i:s') : null,
             ]);
             
         } catch (\Exception $e) {
-            Log::error('Update default names error', [
+            Log::error('Sync last days error', [
                 'message' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
             ]);
@@ -1225,4 +1275,20 @@ class FingerspotWebhookController extends Controller
             ]);
         }
     }
+    
+    /**
+     * Clear filter waktu reset
+     * Gunakan jika ingin sync semua data tanpa filter
+     */
+    public function clearResetFilter()
+    {
+        cache()->forget('fingerspot_last_reset_time');
+        
+        return response()->json([
+            'success' => true,
+            'message' => 'Filter waktu reset telah dihapus',
+            'info' => 'Sekarang sync akan mengambil semua data tanpa filter waktu',
+        ]);
+    }
+    
 }
