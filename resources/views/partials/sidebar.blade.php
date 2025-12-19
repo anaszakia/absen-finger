@@ -7,7 +7,7 @@
         <div class="w-7 h-7 bg-gray-900 rounded-lg flex items-center justify-center">
             <i class="fas fa-layer-group text-white text-xs"></i>
         </div>
-        <span class="text-base font-semibold text-gray-900">Template</span>
+        <span class="text-base font-semibold text-gray-900">Facca Apparel</span>
     </div>
 </div>
 
@@ -22,7 +22,7 @@
             <div class="w-7 h-7 bg-gray-900 rounded-lg flex items-center justify-center">
                 <i class="fas fa-layer-group text-white text-xs"></i>
             </div>
-            <span class="text-base font-semibold text-gray-900 sidebar-text">Template</span>
+            <span class="text-base font-semibold text-gray-900 sidebar-text">Facca Apparel</span>
         </div>
         <button id="sidebar-close" class="lg:hidden p-1.5 text-gray-500 hover:text-gray-900 rounded">
             <i class="fas fa-times text-sm"></i>
