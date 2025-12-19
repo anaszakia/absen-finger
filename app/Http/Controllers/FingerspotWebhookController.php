@@ -202,12 +202,20 @@ class FingerspotWebhookController extends Controller
             if (!$attendance->check_out || $time > $attendance->check_in) {
                 $attendance->check_out = $time;
                 $attendance->attendance_machine_id = $machine->id;
+                
+                // Set keterangan berdasarkan jam pulang
+                $checkoutNotes = $this->determineCheckoutNotes($time);
+                if ($checkoutNotes) {
+                    $attendance->notes = $checkoutNotes;
+                }
+                
                 $attendance->save();
                 
                 Log::info('Updated check-out from fingerspot', [
                     'employee' => $employee->name,
                     'date' => $date,
                     'check_out' => $time,
+                    'notes' => $checkoutNotes,
                 ]);
                 
                 return true;
@@ -339,6 +347,36 @@ class FingerspotWebhookController extends Controller
         $standardTime = Carbon::parse('08:00:00');
 
         return $checkIn->greaterThan($standardTime) ? 'late' : 'present';
+    }
+
+    /**
+     * Determine checkout notes based on check-out time
+     * Jam pulang standar: 16:00
+     * - Sebelum 16:00 = Pulang Awal
+     * - Setelah 16:00 = Lembur X jam Y menit
+     */
+    private function determineCheckoutNotes($checkOutTime)
+    {
+        $checkOut = Carbon::parse($checkOutTime);
+        $standardCheckout = Carbon::parse('16:00:00');
+
+        if ($checkOut->lessThan($standardCheckout)) {
+            return 'Pulang Awal';
+        } elseif ($checkOut->greaterThan($standardCheckout)) {
+            $diff = $checkOut->diff($standardCheckout);
+            $hours = $diff->h;
+            $minutes = $diff->i;
+            
+            if ($hours > 0 && $minutes > 0) {
+                return "Lembur {$hours} jam {$minutes} menit";
+            } elseif ($hours > 0) {
+                return "Lembur {$hours} jam";
+            } else {
+                return "Lembur {$minutes} menit";
+            }
+        }
+
+        return null; // Tepat waktu
     }
 
     /**

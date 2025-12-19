@@ -208,6 +208,9 @@ Route::middleware(['auth', 'log.sensitive'])->group(function () {
     Route::post('/attendances/export', [AttendanceController::class, 'export'])
         ->middleware('permission:export attendances')
         ->name('attendances.export');
+    Route::post('/attendances/recalculate-notes', [AttendanceController::class, 'recalculateNotes'])
+        ->middleware('permission:view attendances')
+        ->name('attendances.recalculate-notes');
     
     // Payroll Management Routes
     // Master Data - Komponen Gaji

@@ -83,6 +83,13 @@ class AttendanceController extends Controller
                         if (!$attendance->check_out || $time > $attendance->check_out) {
                             $attendance->check_out = $time;
                             $attendance->attendance_machine_id = $machine->id;
+                            
+                            // Set keterangan berdasarkan jam pulang
+                            $checkoutNotes = $this->determineCheckoutNotes($time);
+                            if ($checkoutNotes) {
+                                $attendance->notes = $checkoutNotes;
+                            }
+                            
                             $attendance->save();
                         }
                     } else {
@@ -151,6 +158,13 @@ class AttendanceController extends Controller
                             if (!$attendance->check_out || $time > $attendance->check_out) {
                                 $attendance->check_out = $time;
                                 $attendance->attendance_machine_id = $machine->id;
+                                
+                                // Set keterangan berdasarkan jam pulang
+                                $checkoutNotes = $this->determineCheckoutNotes($time);
+                                if ($checkoutNotes) {
+                                    $attendance->notes = $checkoutNotes;
+                                }
+                                
                                 $attendance->save();
                             }
                         } else {
@@ -189,6 +203,36 @@ class AttendanceController extends Controller
         }
 
         return 'present';
+    }
+
+    /**
+     * Determine checkout notes based on check-out time
+     * Jam pulang standar: 16:00
+     * - Sebelum 16:00 = Pulang Awal
+     * - Setelah 16:00 = Lembur X jam Y menit
+     */
+    private function determineCheckoutNotes($checkOutTime)
+    {
+        $checkOut = Carbon::parse($checkOutTime);
+        $standardCheckout = Carbon::parse('16:00:00');
+
+        if ($checkOut->lessThan($standardCheckout)) {
+            return 'Pulang Awal';
+        } elseif ($checkOut->greaterThan($standardCheckout)) {
+            $diff = $checkOut->diff($standardCheckout);
+            $hours = $diff->h;
+            $minutes = $diff->i;
+            
+            if ($hours > 0 && $minutes > 0) {
+                return "Lembur {$hours} jam {$minutes} menit";
+            } elseif ($hours > 0) {
+                return "Lembur {$hours} jam";
+            } else {
+                return "Lembur {$minutes} menit";
+            }
+        }
+
+        return null; // Tepat waktu
     }
 
     /**
@@ -444,6 +488,13 @@ class AttendanceController extends Controller
             // Update check_out if time is later
             if (!$attendance->check_out || $time > $attendance->check_in) {
                 $attendance->check_out = $time;
+                
+                // Set keterangan berdasarkan jam pulang
+                $checkoutNotes = $this->determineCheckoutNotes($time);
+                if ($checkoutNotes) {
+                    $attendance->notes = $checkoutNotes;
+                }
+                
                 $attendance->save();
                 return true;
             }
@@ -468,6 +519,42 @@ class AttendanceController extends Controller
     {
         // TODO: Implement Excel export
         return back()->with('info', 'Fitur export sedang dalam pengembangan.');
+    }
+
+    /**
+     * Recalculate notes for existing attendance records
+     * Update keterangan (pulang awal/lembur) untuk data yang sudah ada
+     */
+    public function recalculateNotes()
+    {
+        try {
+            // Ambil semua data attendance yang punya check_out
+            $attendances = Attendance::whereNotNull('check_out')->get();
+
+            $updated = 0;
+
+            foreach ($attendances as $attendance) {
+                $oldNotes = $attendance->notes;
+                $checkoutNotes = $this->determineCheckoutNotes($attendance->check_out);
+                
+                // Update notes (bisa null untuk tepat waktu, atau string untuk Pulang Awal/Lembur)
+                $attendance->notes = $checkoutNotes;
+                $attendance->save();
+                $updated++;
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => "Berhasil recalculate {$updated} keterangan absensi.",
+                'updated' => $updated
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Error: ' . $e->getMessage()
+            ], 500);
+        }
     }
 }
 

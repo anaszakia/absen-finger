@@ -16,6 +16,10 @@
                     <i class="fas fa-download"></i>
                     Sync Hari Ini
                 </button>
+                <button onclick="recalculateNotes()" id="btnRecalculate" class="bg-yellow-600 hover:bg-yellow-700 text-white px-4 py-2 rounded-lg flex items-center gap-2">
+                    <i class="fas fa-calculator"></i>
+                    Update Keterangan
+                </button>
             </div>
         </div>
 
@@ -108,8 +112,22 @@
                             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                                 {{ $attendance->attendanceMachine->name ?? '-' }}
                             </td>
-                            <td class="px-6 py-4 text-sm text-gray-500">
-                                {{ $attendance->notes ?? '-' }}
+                            <td class="px-6 py-4 text-sm">
+                                @if($attendance->notes)
+                                    @if(str_contains($attendance->notes, 'Pulang Awal'))
+                                        <span class="px-2 py-1 bg-orange-100 text-orange-800 rounded text-xs font-semibold">
+                                            <i class="fas fa-exclamation-circle mr-1"></i>{{ $attendance->notes }}
+                                        </span>
+                                    @elseif(str_contains($attendance->notes, 'Lembur'))
+                                        <span class="px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs font-semibold">
+                                            <i class="fas fa-clock mr-1"></i>{{ $attendance->notes }}
+                                        </span>
+                                    @else
+                                        <span class="text-gray-500">{{ $attendance->notes }}</span>
+                                    @endif
+                                @else
+                                    <span class="text-gray-400">-</span>
+                                @endif
                             </td>
                         </tr>
                     @empty
@@ -259,6 +277,75 @@ function syncTodayData() {
     .catch(error => {
         btn.disabled = false;
         btn.innerHTML = '<i class="fas fa-download"></i> Sync Hari Ini';
+        resultDiv.innerHTML = `
+            <div class="bg-red-50 border border-red-300 rounded p-3">
+                <i class="fas fa-times-circle text-red-600 mr-2"></i>
+                <strong>Error:</strong> ${error.message}
+            </div>
+        `;
+    });
+}
+
+function recalculateNotes() {
+    const resultDiv = document.getElementById('syncResult');
+    const btn = document.getElementById('btnRecalculate');
+    
+    if (!confirm('Akan mengupdate keterangan (Pulang Awal/Lembur) untuk semua data yang sudah ada. Lanjutkan?')) {
+        return;
+    }
+    
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Memproses...';
+    
+    resultDiv.innerHTML = `
+        <div class="bg-blue-50 border border-blue-300 rounded p-3">
+            <i class="fas fa-spinner fa-spin mr-2"></i>
+            Sedang recalculate keterangan absensi...
+        </div>
+    `;
+    
+    fetch('{{ route("attendances.recalculate-notes") }}', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-TOKEN': '{{ csrf_token() }}'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-calculator"></i> Update Keterangan';
+        
+        if (data.success) {
+            resultDiv.innerHTML = `
+                <div class="bg-green-50 border border-green-300 rounded p-4">
+                    <div class="flex items-start">
+                        <i class="fas fa-check-circle text-green-600 text-xl mr-3 mt-1"></i>
+                        <div>
+                            <strong class="text-green-800">Berhasil!</strong>
+                            <p class="text-green-700 mt-1">${data.message}</p>
+                            <div class="mt-2 text-sm text-green-600">
+                                Diupdate: <strong class="text-green-600">${data.updated}</strong> keterangan
+                            </div>
+                        </div>
+                    </div>
+                    <button onclick="location.reload()" class="mt-3 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm">
+                        <i class="fas fa-sync-alt mr-1"></i>Refresh Halaman
+                    </button>
+                </div>
+            `;
+        } else {
+            resultDiv.innerHTML = `
+                <div class="bg-red-50 border border-red-300 rounded p-3">
+                    <i class="fas fa-times-circle text-red-600 mr-2"></i>
+                    <strong>Gagal:</strong> ${data.message}
+                </div>
+            `;
+        }
+    })
+    .catch(error => {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-calculator"></i> Update Keterangan';
         resultDiv.innerHTML = `
             <div class="bg-red-50 border border-red-300 rounded p-3">
                 <i class="fas fa-times-circle text-red-600 mr-2"></i>
