@@ -220,43 +220,39 @@
                                 </div>
 
                                 <div class="bg-gray-50 p-3 rounded border-l-4 border-blue-400">
-                                    <p class="font-semibold text-sm mb-1">3️⃣ Minta Karyawan Scan Jari</p>
+                                    <p class="font-semibold text-sm mb-1">3️⃣ Minta Karyawan Scan Jari Hari Ini</p>
                                     <p class="text-xs text-gray-600 mb-2">
-                                        Karyawan baru scan jari → Data otomatis masuk via webhook (real-time)
+                                        Karyawan baru scan jari di mesin → Absensi tercatat
                                     </p>
-                                    <div class="bg-yellow-50 border border-yellow-300 rounded p-2 mt-2">
-                                        <p class="text-xs font-semibold text-yellow-800">
-                                            ⚠️ JANGAN gunakan "Sync Data Hari Ini" setelah clear!
-                                        </p>
-                                        <p class="text-xs text-gray-700 mt-1">
-                                            API sync mengambil data dari cache server yang masih ada data lama. 
-                                            <strong>Tunggu webhook</strong> saja untuk data real-time dari mesin.
-                                        </p>
-                                    </div>
                                 </div>
                                 
                                 <div class="bg-gray-50 p-3 rounded border-l-4 border-purple-400">
-                                    <p class="font-semibold text-sm mb-1">4️⃣ Cek & Bersihkan Data (Opsional)</p>
+                                    <p class="font-semibold text-sm mb-1">4️⃣ Sync Data Terbaru Setelah Reset</p>
                                     <p class="text-xs text-gray-600 mb-2">
-                                        Jika masih ada karyawan lama yang masuk, hapus manual dari menu Data Karyawan
+                                        <strong>Gunakan setelah Clear Data:</strong> Hanya ambil data karyawan BARU (filter ketat - data lama diabaikan)
                                     </p>
-                                    <a href="{{ route('employees.index') }}" 
-                                       class="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded text-sm inline-block">
-                                        <i class="fas fa-users mr-1"></i>Kelola Data Karyawan
-                                    </a>
+                                    <button onclick="syncAfterReset()" 
+                                            id="btnSyncAfterReset"
+                                            class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded text-sm mr-2">
+                                        <i class="fas fa-sync mr-2"></i>Sync Data Terbaru Setelah Reset
+                                    </button>
+                                    <button onclick="syncTodayData()" 
+                                            id="btnSyncToday"
+                                            class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm">
+                                        <i class="fas fa-download mr-2"></i>Sync Data Hari Ini
+                                    </button>
                                 </div>
                             </div>
                         </div>
 
-                        <div class="bg-red-50 border border-red-300 rounded p-3">
-                            <p class="text-sm font-semibold text-red-800 mb-1">
-                                <i class="fas fa-exclamation-triangle mr-2"></i>Kenapa Sync Manual Tidak Direkomendasikan?
+                        <div class="bg-yellow-50 border border-yellow-300 rounded p-3">
+                            <p class="text-sm font-semibold text-yellow-800 mb-1">
+                                <i class="fas fa-lightbulb mr-2"></i>Tips:
                             </p>
                             <ul class="text-xs text-gray-700 space-y-1 list-disc list-inside ml-2">
-                                <li>Server Fingerspot.io menyimpan cache data beberapa hari</li>
-                                <li>Data cache tidak bisa dibedakan mana yang lama, mana yang baru</li>
-                                <li>Timestamp di cache adalah waktu server, bukan waktu scan di mesin</li>
-                                <li><strong>Solusi:</strong> Tunggu webhook (real-time) atau hapus manual</li>
+                                <li><strong>Sync Terbaru Setelah Reset:</strong> Paling disarankan setelah Clear Data (filter paling ketat, hanya karyawan baru)</li>
+                                <li><strong>Sync Data Hari Ini:</strong> Ambil semua data hari ini dari server</li>
+                                <li><strong>Tunggu Webhook:</strong> Data otomatis masuk real-time saat scan (paling cepat)</li>
                             </ul>
                         </div>
 
@@ -655,6 +651,112 @@ function clearLocalData() {
     .catch(error => {
         btn.disabled = false;
         btn.innerHTML = '<i class="fas fa-trash mr-2"></i>Hapus Semua Data Lokal';
+        
+        resultDiv.innerHTML = `
+            <div class="bg-red-50 border border-red-300 rounded p-3">
+                <i class="fas fa-times-circle text-red-600 mr-2"></i>
+                <strong>Error:</strong> ${error.message}
+            </div>
+        `;
+    });
+}
+
+function syncAfterReset() {
+    const resultDiv = document.getElementById('resetResult');
+    const btn = document.getElementById('btnSyncAfterReset');
+    
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Syncing...';
+    
+    resultDiv.innerHTML = `
+        <div class="bg-blue-50 border border-blue-300 rounded p-3">
+            <i class="fas fa-spinner fa-spin mr-2"></i>
+            Mengambil data karyawan BARU dari mesin (filter ketat aktif)...
+        </div>
+    `;
+    
+    fetch('{{ url("/api/fingerspot/sync-after-reset") }}', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-TOKEN': '{{ csrf_token() }}'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-sync mr-2"></i>Sync Data Terbaru Setelah Reset';
+        
+        if (data.success) {
+            const users = data.synced?.new_users || 0;
+            const attendances = data.synced?.new_attendances || 0;
+            const skippedOldPins = data.filtered?.skipped_old_pins || 0;
+            const skippedOldData = data.filtered?.skipped_old_data || 0;
+            const blacklistCount = data.filtered?.blacklist_count || 0;
+            
+            resultDiv.innerHTML = `
+                <div class="bg-green-50 border border-green-300 rounded p-4">
+                    <div class="flex items-start mb-3">
+                        <i class="fas fa-check-circle text-green-600 mt-1 mr-2"></i>
+                        <div class="flex-1">
+                            <p class="font-semibold text-green-800 mb-2">${data.message}</p>
+                            
+                            <div class="grid grid-cols-2 gap-3 mb-3">
+                                <div class="bg-white p-3 rounded border">
+                                    <p class="text-2xl font-bold text-green-600">${users}</p>
+                                    <p class="text-xs text-gray-600">✅ Karyawan BARU</p>
+                                </div>
+                                <div class="bg-white p-3 rounded border">
+                                    <p class="text-2xl font-bold text-blue-600">${attendances}</p>
+                                    <p class="text-xs text-gray-600">Absensi Baru</p>
+                                </div>
+                            </div>
+                            
+                            <div class="bg-white border border-gray-200 rounded p-3 mb-3">
+                                <p class="text-xs font-semibold text-gray-700 mb-2">📊 Statistik Filter:</p>
+                                <div class="text-xs text-gray-600 space-y-1">
+                                    <p>📥 Total data diterima: <strong>${data.filtered?.total_received || 0}</strong></p>
+                                    <p class="text-orange-600">🚫 Data PIN lama di-skip: <strong>${skippedOldPins}</strong> (ada di blacklist)</p>
+                                    <p class="text-orange-600">🚫 Data sebelum reset di-skip: <strong>${skippedOldData}</strong></p>
+                                    <p class="text-blue-600">📋 PIN dalam blacklist: <strong>${blacklistCount}</strong></p>
+                                </div>
+                            </div>
+                            
+                            <div class="bg-green-100 border border-green-300 rounded p-2 mb-2">
+                                <p class="text-xs text-green-800">
+                                    <i class="fas fa-info-circle mr-1"></i>
+                                    ${data.info || 'Filter aktif: Hanya karyawan BARU yang masuk'}
+                                </p>
+                            </div>
+                            
+                            <p class="text-xs text-gray-500">📅 Range: ${data.date_range}</p>
+                        </div>
+                    </div>
+                    
+                    <div class="flex gap-2 mt-3">
+                        <a href="{{ route('employees.index') }}" 
+                           class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm">
+                            <i class="fas fa-users mr-1"></i>Lihat Data Karyawan
+                        </a>
+                        <a href="{{ route('attendances.index') }}" 
+                           class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded text-sm">
+                            <i class="fas fa-clipboard-list mr-1"></i>Lihat Data Absensi
+                        </a>
+                    </div>
+                </div>
+            `;
+        } else {
+            resultDiv.innerHTML = `
+                <div class="bg-red-50 border border-red-300 rounded p-3">
+                    <i class="fas fa-times-circle text-red-600 mr-2"></i>
+                    <strong>Gagal:</strong> ${data.message}
+                </div>
+            `;
+        }
+    })
+    .catch(error => {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-sync mr-2"></i>Sync Data Terbaru Setelah Reset';
         
         resultDiv.innerHTML = `
             <div class="bg-red-50 border border-red-300 rounded p-3">

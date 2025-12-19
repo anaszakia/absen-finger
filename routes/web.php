@@ -39,6 +39,8 @@ Route::prefix('api')->group(function () {
         ->name('fingerspot.clear-local-data');
     Route::post('/fingerspot/sync-today', [FingerspotWebhookController::class, 'syncTodayOnly'])
         ->name('fingerspot.sync-today');
+    Route::post('/fingerspot/sync-after-reset', [FingerspotWebhookController::class, 'syncAfterReset'])
+        ->name('fingerspot.sync-after-reset');
     Route::post('/fingerspot/sync-last-days', [FingerspotWebhookController::class, 'syncLastDays'])
         ->name('fingerspot.sync-last-days');
     Route::delete('/fingerspot/clear-reset-filter', [FingerspotWebhookController::class, 'clearResetFilter'])

@@ -746,6 +746,9 @@ class FingerspotWebhookController extends Controller
     public function clearLocalData()
     {
         try {
+            // Simpan daftar PIN yang akan dihapus sebagai BLACKLIST
+            $deletedPins = Employee::pluck('employee_id')->toArray();
+            
             // Hitung dulu sebelum dihapus
             $deletedAttendances = Attendance::count();
             $deletedEmployees = Employee::count();
@@ -768,13 +771,16 @@ class FingerspotWebhookController extends Controller
             
             DB::commit();
             
-            // Simpan timestamp reset untuk filter data lama saat sync
+            // Simpan timestamp reset DAN blacklist PIN yang dihapus
             $resetTime = now();
             cache()->put('fingerspot_last_reset_time', $resetTime->toDateTimeString(), now()->addDays(30));
+            cache()->put('fingerspot_deleted_pins', $deletedPins, now()->addDays(30));
             
             Log::info('Local data cleared successfully', [
                 'deleted_employees' => $deletedEmployees,
                 'deleted_attendances' => $deletedAttendances,
+                'deleted_pins_count' => count($deletedPins),
+                'deleted_pins' => $deletedPins,
                 'reset_time' => $resetTime->toDateTimeString(),
             ]);
             
@@ -786,9 +792,8 @@ class FingerspotWebhookController extends Controller
                     'attendances' => $deletedAttendances,
                 ],
                 'reset_time' => $resetTime->toDateTimeString(),
-                'next_step' => 'Minta karyawan baru scan jari di mesin → Data otomatis masuk via webhook',
-                'important' => '⚠️ JANGAN gunakan Sync Manual setelah clear - tunggu webhook saja!',
-                'reason' => 'API sync ambil data dari cache server yang masih punya data lama. Webhook = real-time dari mesin.',
+                'next_step' => 'Klik tombol "Sync Data Terbaru Setelah Reset" untuk ambil data karyawan baru saja',
+                'important' => '✅ Filter ketat sudah aktif - hanya data karyawan BARU yang akan masuk',
             ]);
             
         } catch (\Exception $e) {
@@ -804,6 +809,254 @@ class FingerspotWebhookController extends Controller
                 'success' => false,
                 'message' => 'Error: ' . $e->getMessage(),
                 'hint' => 'Coba refresh halaman dan ulangi lagi',
+            ]);
+        }
+    }
+    
+    /**
+     * Sync data terbaru setelah reset - HANYA karyawan BARU (bukan yang dihapus)
+     * Filter paling ketat untuk menghindari data lama masuk lagi
+     */
+    public function syncAfterReset()
+    {
+        try {
+            $cloudId = env('FINGERSPOT_CLOUD_ID');
+            $apiToken = env('FINGERSPOT_API_TOKEN');
+            
+            if (!$apiToken || !$cloudId) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'API Token atau Cloud ID belum dikonfigurasi',
+                ]);
+            }
+
+            // Ambil blacklist PIN yang dihapus
+            $deletedPins = cache()->get('fingerspot_deleted_pins', []);
+            $lastResetTime = cache()->get('fingerspot_last_reset_time');
+            
+            if (!$lastResetTime) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Belum ada data reset. Lakukan Clear Data dulu.',
+                ]);
+            }
+
+            $url = "https://developer.fingerspot.io/api/get_attlog";
+            
+            // Ambil data 2 hari terakhir untuk memastikan dapat data terbaru
+            $today = date('Y-m-d');
+            $startDate = date('Y-m-d', strtotime('-1 days'));
+            
+            $postData = [
+                'trans_id' => uniqid(),
+                'cloud_id' => $cloudId,
+                'start_date' => $startDate,
+                'end_date' => $today,
+            ];
+            
+            Log::info('Sync after reset - Request', array_merge($postData, [
+                'blacklist_pins' => $deletedPins,
+                'reset_time' => $lastResetTime,
+            ]));
+            
+            $ch = curl_init($url);
+            curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 0);
+            curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, 0);
+            curl_setopt($ch, CURLOPT_POST, 1);
+            curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($postData));
+            curl_setopt($ch, CURLOPT_HTTPHEADER, [
+                'Content-Type: application/json',
+                'Authorization: Bearer ' . $apiToken
+            ]);
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
+            curl_setopt($ch, CURLOPT_FOLLOWLOCATION, 1);
+            curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+            
+            $response = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $error = curl_error($ch);
+            curl_close($ch);
+            
+            if ($error) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Connection error: ' . $error,
+                ]);
+            }
+            
+            $responseData = json_decode($response, true);
+            
+            Log::info('Sync after reset - Response', [
+                'http_code' => $httpCode,
+                'data_count' => isset($responseData['data']) ? count($responseData['data']) : 0,
+            ]);
+            
+            if ($httpCode !== 200) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'API Error (HTTP ' . $httpCode . ')',
+                    'http_code' => $httpCode,
+                ]);
+            }
+            
+            if (isset($responseData['error_code'])) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'API Error: ' . ($responseData['message'] ?? $responseData['error_code']),
+                ]);
+            }
+            
+            // Process data dengan FILTER KETAT
+            $newUsers = 0;
+            $newAttendances = 0;
+            $skippedOldPins = 0;
+            $skippedOldData = 0;
+            $uniqueUsers = [];
+            
+            if (isset($responseData['data']) && is_array($responseData['data'])) {
+                $machine = AttendanceMachine::where('serial_number', $cloudId)->first();
+                
+                if (!$machine) {
+                    $machine = AttendanceMachine::create([
+                        'name' => 'Fingerspot Device',
+                        'serial_number' => $cloudId,
+                        'ip_address' => 'FDEVICE.COM',
+                        'port' => 9003,
+                        'location' => 'Auto-registered',
+                        'is_active' => true,
+                    ]);
+                }
+                
+                foreach ($responseData['data'] as $record) {
+                    $pin = $record['pin'] ?? $record['personid'] ?? null;
+                    $name = $record['personname'] ?? $record['name'] ?? null;
+                    $scanDate = $record['scan_date'] ?? $record['datetime'] ?? null;
+                    
+                    if (!$pin || !$scanDate) continue;
+                    
+                    // FILTER 1: Skip PIN yang ada di BLACKLIST (PIN lama yang sudah dihapus)
+                    if (in_array($pin, $deletedPins)) {
+                        Log::info('SKIPPED - PIN in blacklist', [
+                            'pin' => $pin,
+                            'name' => $name,
+                            'reason' => 'PIN ini adalah karyawan lama yang sudah dihapus',
+                        ]);
+                        $skippedOldPins++;
+                        continue;
+                    }
+                    
+                    $scanDateTime = Carbon::parse($scanDate);
+                    
+                    // FILTER 2: Skip data sebelum waktu reset
+                    $resetDateTime = Carbon::parse($lastResetTime);
+                    if ($scanDateTime->lessThanOrEqualTo($resetDateTime)) {
+                        Log::info('SKIPPED - Data sebelum reset', [
+                            'pin' => $pin,
+                            'scan_time' => $scanDateTime->toDateTimeString(),
+                            'reset_time' => $resetDateTime->toDateTimeString(),
+                        ]);
+                        $skippedOldData++;
+                        continue;
+                    }
+                    
+                    // FILTER 3: Hanya proses PIN yang BELUM ADA di database
+                    $existingEmployee = Employee::where('employee_id', $pin)->first();
+                    
+                    if (!isset($uniqueUsers[$pin])) {
+                        if (!$existingEmployee) {
+                            // Employee BARU - create
+                            $employee = Employee::create([
+                                'employee_id' => $pin,
+                                'name' => $name ?? "Employee $pin",
+                                'pin' => $pin,
+                                'is_active' => true,
+                            ]);
+                            
+                            $uniqueUsers[$pin] = $employee;
+                            $newUsers++;
+                            
+                            Log::info('✅ NEW employee created', [
+                                'pin' => $pin,
+                                'name' => $employee->name,
+                                'scan_time' => $scanDateTime->toDateTimeString(),
+                            ]);
+                        } else {
+                            // Employee sudah ada - gunakan yang ada
+                            $uniqueUsers[$pin] = $existingEmployee;
+                            
+                            Log::info('Employee already exists - using existing', [
+                                'pin' => $pin,
+                                'name' => $existingEmployee->name,
+                            ]);
+                        }
+                    }
+                    
+                    $employee = $uniqueUsers[$pin];
+                    
+                    // Save attendance
+                    $date = $scanDateTime->format('Y-m-d');
+                    $time = $scanDateTime->format('H:i:s');
+                    
+                    $attendance = Attendance::where('employee_id', $employee->id)
+                                          ->where('date', $date)
+                                          ->first();
+                    
+                    if (!$attendance) {
+                        Attendance::create([
+                            'employee_id' => $employee->id,
+                            'attendance_machine_id' => $machine->id,
+                            'date' => $date,
+                            'check_in' => $time,
+                            'status' => $scanDateTime->format('H:i') > '08:00' ? 'late' : 'present',
+                        ]);
+                        $newAttendances++;
+                        
+                        Log::info('✅ NEW attendance created', [
+                            'employee' => $employee->name,
+                            'date' => $date,
+                            'time' => $time,
+                        ]);
+                    } elseif (!$attendance->check_out && $time > $attendance->check_in) {
+                        $attendance->check_out = $time;
+                        $attendance->save();
+                        $newAttendances++;
+                        
+                        Log::info('Attendance updated - check out', [
+                            'employee' => $employee->name,
+                            'check_out' => $time,
+                        ]);
+                    }
+                }
+            }
+            
+            $totalReceived = isset($responseData['data']) ? count($responseData['data']) : 0;
+            
+            return response()->json([
+                'success' => true,
+                'message' => "✅ Sync selesai: {$newUsers} karyawan BARU, {$newAttendances} absensi baru",
+                'date_range' => "$startDate s/d $today",
+                'synced' => [
+                    'new_users' => $newUsers,
+                    'new_attendances' => $newAttendances,
+                ],
+                'filtered' => [
+                    'total_received' => $totalReceived,
+                    'skipped_old_pins' => $skippedOldPins,
+                    'skipped_old_data' => $skippedOldData,
+                    'blacklist_count' => count($deletedPins),
+                ],
+                'info' => '✅ Filter aktif: Hanya karyawan BARU yang masuk, data lama diabaikan',
+            ]);
+            
+        } catch (\Exception $e) {
+            Log::error('Sync after reset error', [
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            
+            return response()->json([
+                'success' => false,
+                'message' => 'Error: ' . $e->getMessage(),
             ]);
         }
     }
