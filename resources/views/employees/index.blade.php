@@ -8,8 +8,19 @@
         <div class="flex justify-between items-center mb-6">
             <h2 class="text-2xl font-bold text-gray-800">Data Karyawan</h2>
             <div class="flex gap-2">
+                <button onclick="syncAfterReset()" id="btnSyncAfterReset" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg flex items-center gap-2">
+                    <i class="fas fa-sync"></i>
+                    Sync Setelah Reset
+                </button>
+                <button onclick="syncTodayData()" id="btnSyncToday" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2">
+                    <i class="fas fa-download"></i>
+                    Sync Hari Ini
+                </button>
             </div>
         </div>
+
+        <!-- Sync Result -->
+        <div id="syncResult" class="mb-4"></div>
 
         <div class="overflow-x-auto">
             <table class="min-w-full divide-y divide-gray-200">
@@ -94,5 +105,141 @@
         </div>
     </div>
 </div>
+
+<script>
+function syncAfterReset() {
+    const resultDiv = document.getElementById('syncResult');
+    const btn = document.getElementById('btnSyncAfterReset');
+    
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Syncing...';
+    
+    resultDiv.innerHTML = `
+        <div class="bg-blue-50 border border-blue-300 rounded p-3">
+            <i class="fas fa-spinner fa-spin mr-2"></i>Mengambil data karyawan BARU (filter ketat)...
+        </div>
+    `;
+    
+    fetch('{{ url("/api/fingerspot/sync-after-reset") }}', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-TOKEN': '{{ csrf_token() }}'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-sync"></i> Sync Setelah Reset';
+        
+        if (data.success) {
+            const users = data.synced?.new_users || 0;
+            const skipped = (data.filtered?.skipped_old_pins || 0) + (data.filtered?.skipped_old_data || 0);
+            
+            resultDiv.innerHTML = `
+                <div class="bg-green-50 border border-green-300 rounded p-4">
+                    <i class="fas fa-check-circle text-green-600 mr-2"></i>
+                    <strong>${data.message}</strong>
+                    <div class="flex gap-2 mt-2">
+                        <span class="bg-white px-3 py-1 rounded border">
+                            <strong class="text-green-600">${users}</strong> karyawan baru
+                        </span>
+                        <span class="bg-white px-3 py-1 rounded border">
+                            <strong class="text-orange-600">${skipped}</strong> data lama di-skip
+                        </span>
+                    </div>
+                    <button onclick="location.reload()" class="mt-3 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm">
+                        <i class="fas fa-sync-alt mr-1"></i>Refresh Halaman
+                    </button>
+                </div>
+            `;
+        } else {
+            resultDiv.innerHTML = `
+                <div class="bg-red-50 border border-red-300 rounded p-3">
+                    <i class="fas fa-times-circle text-red-600 mr-2"></i>
+                    <strong>Gagal:</strong> ${data.message}
+                </div>
+            `;
+        }
+    })
+    .catch(error => {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-sync"></i> Sync Setelah Reset';
+        resultDiv.innerHTML = `
+            <div class="bg-red-50 border border-red-300 rounded p-3">
+                <i class="fas fa-times-circle text-red-600 mr-2"></i>
+                <strong>Error:</strong> ${error.message}
+            </div>
+        `;
+    });
+}
+
+function syncTodayData() {
+    const resultDiv = document.getElementById('syncResult');
+    const btn = document.getElementById('btnSyncToday');
+    
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Syncing...';
+    
+    resultDiv.innerHTML = `
+        <div class="bg-blue-50 border border-blue-300 rounded p-3">
+            <i class="fas fa-spinner fa-spin mr-2"></i>Mengambil data hari ini...
+        </div>
+    `;
+    
+    fetch('{{ url("/api/fingerspot/sync-today") }}', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-TOKEN': '{{ csrf_token() }}'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-download"></i> Sync Hari Ini';
+        
+        if (data.success) {
+            const users = data.synced?.users || 0;
+            const attendances = data.synced?.attendances || 0;
+            
+            resultDiv.innerHTML = `
+                <div class="bg-green-50 border border-green-300 rounded p-4">
+                    <i class="fas fa-check-circle text-green-600 mr-2"></i>
+                    <strong>${data.message}</strong>
+                    <div class="flex gap-2 mt-2">
+                        <span class="bg-white px-3 py-1 rounded border">
+                            <strong class="text-blue-600">${users}</strong> karyawan
+                        </span>
+                        <span class="bg-white px-3 py-1 rounded border">
+                            <strong class="text-green-600">${attendances}</strong> absensi
+                        </span>
+                    </div>
+                    <button onclick="location.reload()" class="mt-3 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm">
+                        <i class="fas fa-sync-alt mr-1"></i>Refresh Halaman
+                    </button>
+                </div>
+            `;
+        } else {
+            resultDiv.innerHTML = `
+                <div class="bg-red-50 border border-red-300 rounded p-3">
+                    <i class="fas fa-times-circle text-red-600 mr-2"></i>
+                    <strong>Gagal:</strong> ${data.message}
+                </div>
+            `;
+        }
+    })
+    .catch(error => {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-download"></i> Sync Hari Ini';
+        resultDiv.innerHTML = `
+            <div class="bg-red-50 border border-red-300 rounded p-3">
+                <i class="fas fa-times-circle text-red-600 mr-2"></i>
+                <strong>Error:</strong> ${error.message}
+            </div>
+        `;
+    });
+}
+</script>
 
 @endsection
